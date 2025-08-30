@@ -122,7 +122,6 @@ class GraphicsExample(QMainWindow):
         def on_double_click(event):
             print("Mouse double clicked at:", event.pos())
 
-        self.scene.mouseDoubleClickEvent.connect(on_double_click)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
