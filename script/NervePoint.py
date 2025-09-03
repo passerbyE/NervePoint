@@ -7,7 +7,6 @@ from PyQt6.QtCore import Qt
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 
-
 script_dir = os.path.dirname(os.path.abspath(__file__))
 # 往上一層，取得專案的根目錄 (d:\NervePoint)
 project_root = os.path.dirname(script_dir)
@@ -22,13 +21,13 @@ for i in json_data["nodeList"]:
     print(f"節點{i['id']}: \t 文字={i['Text']}\t 父節點={i['FatherNodeid']}\t 座標={i['coordinate']}")
 
 
-class GraphicsExample(QMainWindow):
+class NervePoint(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("NervePoint")
         self.setGeometry(0, 0, 800, 600)
         self.setStyleSheet("background-color: #000000;")
-
+        
         # 這裡是所有圖形項目的容器
         self.scene = QGraphicsScene()
         # 設定場景的背景顏色
@@ -125,6 +124,6 @@ class GraphicsExample(QMainWindow):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    window = GraphicsExample()
+    window = NervePoint()
     window.show()
     sys.exit(app.exec())
