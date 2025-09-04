@@ -24,12 +24,16 @@ for i in json_data["nodeList"]:
 class NervePoint(QMainWindow):
     def __init__(self):
         super().__init__()
+        
+        
+        #參數
+        
         self.setWindowTitle("NervePoint")
         self.setGeometry(560, 240, 800, 600)
         self.setStyleSheet("background-color: #000000;")
         
         # --- 側邊欄dolist（可停靠部件 QDockWidget） ---
-        self.todo_dock = QDockWidget("待辦清單", self)
+        self.todo_dock = QDockWidget("Nerve Do List", self)
         self.todo_dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
         todo_container = QWidget()
         todo_layout = QVBoxLayout()
