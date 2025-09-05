@@ -136,6 +136,9 @@ class NervePoint(QMainWindow):
         self.setCentralWidget(self.view)
         self.view.setRenderHint(QPainter.RenderHint.Antialiasing) # 反鋸齒
         
+        #連結double click view 事件
+        self.view.mouseDoubleClickEvent = self.on_double_click
+        
         
 
         # --- 自訂捲動軸樣式 ---
@@ -157,14 +160,15 @@ class NervePoint(QMainWindow):
         self.view.setStyleSheet(stylesheet)
         # --- 樣式設定結束 ---
 
-        # 呼叫方法來建立初始的矩形
-        self.builtRect(0, 0)
 
     # --- 將巢狀函式移到此處，並轉換為類別方法 ---
 
     # 雙擊事件 (注意：這個事件目前沒有被連接到任何元件上)
     def on_double_click(self, event):
         print("Mouse double clicked at:", event.pos())
+        scene_pos = self.view.mapToScene(event.pos())
+        print(f"view double click build rect on: {scene_pos}")
+        self.builtRect(scene_pos.x(), scene_pos.y())
     
     # 設置分塊
     def builtRect(self, posX, posY):
@@ -174,19 +178,37 @@ class NervePoint(QMainWindow):
         #修改畫面大小的地方要改
         #self.veiw.setSceneRect(0, 0, posX + 100, posY + 100)
         
-        rect_item = QGraphicsRectItem(posX, posY, 100, 50)
+        rect_item = QGraphicsRectItem(posX -50, posY -25, 100, 50)
         # 這個矩形的背景是淺灰色 (#DBDBDB)
         rect_item.setBrush(QBrush(QColor("#DBDBDB"))) 
         rect_item.setPen(QPen(QColor("#C4C4C4"), 2))
+
+        # --- 修正：設定矩形為可移動 ---
+        # 這樣矩形和它的子項目(文字)才能被滑鼠拖動
+        rect_item.setFlag(QGraphicsRectItem.GraphicsItemFlag.ItemIsMovable)
+
         self.scene.addItem(rect_item)
 
         # --- 在淺色矩形上新增深色文字 ---
         # 為了形成對比，我們在淺色背景上使用黑色文字
-        text_on_rect = QGraphicsTextItem("節點文字", parent=rect_item)
+        text_on_rect = QGraphicsTextItem("now node", parent=rect_item)
         text_on_rect.setDefaultTextColor(QColor("#000000")) # 設定文字為黑色
-        # 稍微調整文字位置使其在矩形內居中
-        text_on_rect.setPos(posX + 15, posY + 12)
-        self.scene.addItem(text_on_rect)
+        
+        # --- 修正：自動計算並設定文字在方塊內置中的位置 ---
+        # 1. 取得方塊的寬度和高度
+        rect_width = rect_item.rect().width()
+        rect_height = rect_item.rect().height()
+        
+        # 2. 取得文字的寬度和高度
+        text_width = text_on_rect.boundingRect().width()
+        text_height = text_on_rect.boundingRect().height()
+        
+        # 3. 計算置中的左上角座標
+        center_x = (rect_width - text_width) / 2
+        center_y = (rect_height - text_height) / 2
+        
+        # 4. 設定文字的位置
+        text_on_rect.setPos(posX - center_x,posY - center_y)
 
         
     # QDockWidget 的 visibilityChanged 信號會傳遞一個布林值 (visible)
