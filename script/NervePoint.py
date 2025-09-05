@@ -1,25 +1,55 @@
 import sys
 import json
 import os
+import keyboard as kb
 from PyQt6.QtWidgets import QVBoxLayout, QWidget, QApplication,  QDockWidget, QListWidget, QMainWindow, QGraphicsView, QGraphicsScene, QGraphicsRectItem, QGraphicsEllipseItem, QGraphicsTextItem
 # 匯入 QAction 以建立選單項目
-from PyQt6.QtGui import QColor, QBrush, QPen, QPainter, QAction
+from PyQt6.QtGui import QColor, QBrush, QPen, QPainter, QAction, QTextCursor
 from PyQt6.QtCore import Qt
 
 
-
+# --- 組合路徑的程式碼 ... ---
 script_dir = os.path.dirname(os.path.abspath(__file__))
-# 往上一層，取得專案的根目錄 (d:\NervePoint)
 project_root = os.path.dirname(script_dir)
-# 組合出 JSON 檔案的絕對路徑
 json_path = os.path.join(project_root, '.json', 'node.json')
 
 
-with open(json_path, 'r', encoding='utf-8') as f:
-    json_data = json.load(f)
-    
-for i in json_data["nodeList"]:
-    print(f"節點{i['id']}: \t 文字={i['Text']}\t 父節點={i['FatherNodeid']}\t 座標={i['coordinate']}")
+# --- 自訂圖形項目類別 ---
+
+class NodeTextItem(QGraphicsTextItem):
+    """自訂的文字項目，處理編輯邏輯"""
+    def focusOutEvent(self, event):
+        # 當文字失去焦點時 (編輯完成)，設回不可編輯狀態
+        self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        
+        #取消反白
+        curser = self.textCursor()
+        curser.clearSelection()
+        self.setTextCursor(curser)
+        
+        super().focusOutEvent(event)
+        # 在這裡可以加入更新 JSON 資料的邏輯
+
+class NodeRectItem(QGraphicsRectItem):
+    """自訂的方塊項目，處理雙擊事件"""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.text_item = None # 用來存放對應的文字項目
+
+    def set_text_item(self, text_item):
+        self.text_item = text_item
+
+    def mouseDoubleClickEvent(self, event):
+        # 當方塊被雙擊時，讓其內部的文字進入編輯模式
+        if self.text_item:
+            self.text_item.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
+            self.text_item.setFocus()
+            # 選取所有文字
+            cursor = self.text_item.textCursor()
+            cursor.select(QTextCursor.SelectionType.Document)
+            self.text_item.setTextCursor(cursor)
+        # 呼叫父類別的方法，以防有其他預設行為
+        super().mouseDoubleClickEvent(event)
 
 
 class NervePoint(QMainWindow):
@@ -79,7 +109,6 @@ class NervePoint(QMainWindow):
         self.todo_dock = QDockWidget("Nerve Do List", self)
         self.todo_dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
         
-        
         # --- 將 QDockWidget 和 QListWidget 的樣式合併並設定在 Dock 上 ---
         self.todo_dock.setStyleSheet("""
             QDockWidget {
@@ -107,12 +136,10 @@ class NervePoint(QMainWindow):
             }
         """)
 
-
+        # --- 創建todo 物件 ---
         todo_container = QWidget()
         todo_layout = QVBoxLayout()
         self.todo_list = QListWidget()
-        # --- QListWidget 的高對比樣式 (樣式已移至上方) ---
-        
         self.todo_list.addItem("代辦1: 完成節點設計")
         self.todo_list.addItem("代辦2: 實現連線功能")
         self.todo_list.addItem("代辦3: 儲存與讀取")
@@ -128,16 +155,17 @@ class NervePoint(QMainWindow):
         
         # 這裡是所有圖形項目的容器
         self.scene = QGraphicsScene()
+        # --- #1：將雙擊事件綁定到 Scene ---
+        self.scene.mouseDoubleClickEvent = self.on_scene_double_click
         self.scene.setBackgroundBrush(QColor("#181818"))
-        self.scene.setSceneRect(0, 0, 200, 200)
 
         # 3. 建立一個 QGraphicsView (檢視/視窗)
         self.view = QGraphicsView(self.scene, self)
         self.setCentralWidget(self.view)
         self.view.setRenderHint(QPainter.RenderHint.Antialiasing) # 反鋸齒
         
-        #連結double click view 事件
-        self.view.mouseDoubleClickEvent = self.on_double_click
+        # --- 修正 #2：移除對 View 事件的覆寫 ---
+        # self.view.mouseDoubleClickEvent = self.on_double_click # <--- 刪除或註解掉這行
         
         
 
@@ -159,58 +187,61 @@ class NervePoint(QMainWindow):
             
         self.view.setStyleSheet(stylesheet)
         # --- 樣式設定結束 ---
-
-
+    
+    
     # --- 將巢狀函式移到此處，並轉換為類別方法 ---
 
-    # 雙擊事件 (注意：這個事件目前沒有被連接到任何元件上)
-    def on_double_click(self, event):
-        print("Mouse double clicked at:", event.pos())
-        scene_pos = self.view.mapToScene(event.pos())
-        print(f"view double click build rect on: {scene_pos}")
-        self.builtRect(scene_pos.x(), scene_pos.y())
-    
+    # --- 修正 #3：重新命名並修改此方法以處理 Scene 事件 ---
+    def on_scene_double_click(self, event):
+        # 檢查點擊位置下方是否有圖形項目
+        # event.scenePos() 直接提供場景座標
+        scene_pos = event.scenePos()
+        item = self.scene.itemAt(scene_pos, self.view.transform())
+        
+        # 如果 item 是 None，表示點擊在空白處
+        if item is None:
+            print("在空白處雙擊，建立新方塊...")
+            self.builtRect(scene_pos.x(), scene_pos.y())
+        else:
+            # 如果點擊在現有項目上，則呼叫 QGraphicsScene 的預設處理方式
+            # 這樣事件才能被正確傳遞給被點擊的項目 (NodeRectItem)
+            print("在現有項目上雙擊")
+            QGraphicsScene.mouseDoubleClickEvent(self.scene, event)
+
+
     # 設置分塊
     def builtRect(self, posX, posY):
-        # 建立一個矩形
-        # QGraphicsRectItem(x, y, width, height)
+        # --- 使用自訂的 NodeRectItem ---
+        rect_item = NodeRectItem(posX - 50, posY - 25, 100, 50)
         
-        #修改畫面大小的地方要改
-        #self.veiw.setSceneRect(0, 0, posX + 100, posY + 100)
-        
-        rect_item = QGraphicsRectItem(posX -50, posY -25, 100, 50)
-        # 這個矩形的背景是淺灰色 (#DBDBDB)
         rect_item.setBrush(QBrush(QColor("#DBDBDB"))) 
         rect_item.setPen(QPen(QColor("#C4C4C4"), 2))
-
-        # --- 修正：設定矩形為可移動 ---
-        # 這樣矩形和它的子項目(文字)才能被滑鼠拖動
         rect_item.setFlag(QGraphicsRectItem.GraphicsItemFlag.ItemIsMovable)
-
         self.scene.addItem(rect_item)
 
-        # --- 在淺色矩形上新增深色文字 ---
-        # 為了形成對比，我們在淺色背景上使用黑色文字
-        text_on_rect = QGraphicsTextItem("now node", parent=rect_item)
-        text_on_rect.setDefaultTextColor(QColor("#000000")) # 設定文字為黑色
+        # --- 使用自訂的 NodeTextItem ---
+        text_on_rect = NodeTextItem("now node", parent=rect_item)
+        text_on_rect.setDefaultTextColor(QColor("#000000"))
         
-        # --- 修正：自動計算並設定文字在方塊內置中的位置 ---
-        # 1. 取得方塊的寬度和高度
+        # 讓方塊知道它的文字項目是誰
+        rect_item.set_text_item(text_on_rect)
+        
+        # --- 文字置中邏輯 (保持不變) ---
         rect_width = rect_item.rect().width()
         rect_height = rect_item.rect().height()
-        
-        # 2. 取得文字的寬度和高度
         text_width = text_on_rect.boundingRect().width()
         text_height = text_on_rect.boundingRect().height()
-        
-        # 3. 計算置中的左上角座標
         center_x = (rect_width - text_width) / 2
         center_y = (rect_height - text_height) / 2
-        
-        # 4. 設定文字的位置
-        text_on_rect.setPos(posX - center_x,posY - center_y)
+        text_on_rect.setPos((posX - 50) + center_x,(posY - 25) + center_y)
 
-        
+        # --- 讓新建的文字立即進入編輯模式 (保持不變) ---
+        text_on_rect.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
+        text_on_rect.setFocus()
+        cursor = text_on_rect.textCursor()
+        cursor.select(QTextCursor.SelectionType.Document)
+        text_on_rect.setTextCursor(cursor)
+
     # QDockWidget 的 visibilityChanged 信號會傳遞一個布林值 (visible)
     def todo_dock_visibilityChange(self, visible):
         if(visible != self.lastDockChange and visible == False):
@@ -228,6 +259,14 @@ class NervePoint(QMainWindow):
         # 2. 確保它是可見的
         self.todo_dock.show()
 
+    # --- 資料新增 ---
+    # def renew_data(self, id, Text, FatherNodeid, coordinate):
+    # {
+    #     try:
+    #         with open(json_path, 'w', encoding='utf-8') as f:
+    #             json.dump(self.json_data, f, ensure_ascii=False, indent=4)
+    #             f
+    # }
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
