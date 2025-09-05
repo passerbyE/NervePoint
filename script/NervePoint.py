@@ -5,13 +5,19 @@ import keyboard as kb
 from PyQt6.QtWidgets import QVBoxLayout, QWidget, QApplication,  QDockWidget, QListWidget, QMainWindow, QGraphicsView, QGraphicsScene, QGraphicsRectItem, QGraphicsEllipseItem, QGraphicsTextItem
 # 匯入 QAction 以建立選單項目
 from PyQt6.QtGui import QColor, QBrush, QPen, QPainter, QAction, QTextCursor
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
+import random as rd
+
+# --- 變數 特殊 設定用---
+dataUpdateTime = 5000
+summonWorld = ["NODE", "(∠ ω< )⌒☆"]
+probabilities = [19, 1]
 
 
 # --- 組合路徑的程式碼 ... ---
 script_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(script_dir)
-json_path = os.path.join(project_root, '.json', 'node.json')
+json_path = os.path.join(project_root, '.data', 'node.json')
 
 
 # --- 自訂圖形項目類別 ---
@@ -25,7 +31,7 @@ class NodeTextItem(QGraphicsTextItem):
         #取消反白
         curser = self.textCursor()
         curser.clearSelection()
-        self.setTextCursor(curser)
+        self.setTextCursor(curser)  
         
         super().focusOutEvent(event)
         # 在這裡可以加入更新 JSON 資料的邏輯
@@ -51,10 +57,27 @@ class NodeRectItem(QGraphicsRectItem):
         # 呼叫父類別的方法，以防有其他預設行為
         super().mouseDoubleClickEvent(event)
 
+    def itemChange(self, change, value):
+        if change == self.GraphicsItemChange.ItemPositionHasChanged:
+            # 當位置移動完成後觸發
+            print(f"方塊位置已變更為: {self.pos()}")
+            # 在這裡可以加入更新 JSON 資料的邏輯
+        return super().itemChange(change, value)
+
 
 class NervePoint(QMainWindow):
     def __init__(self):
         super().__init__()
+        #讀取節點資料
+        self.node_data = self.load_data()
+        
+        #儲存用timmer
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.save_data)
+        self.timer.start(dataUpdateTime)
+        
+        # 測試
+        self.load_nodes_from_data()
         
         # 參數
         self.lastDockChange = True # 初始化 lastDockChange 屬性
@@ -62,7 +85,7 @@ class NervePoint(QMainWindow):
         self.setWindowTitle("NervePoint")
         self.setGeometry(560, 240, 800, 600)
         
-        # --- 全域高對比樣式設定 ---
+        # --- 全域樣式設定 ---
         self.setStyleSheet("""
             QMainWindow {
                 background-color: #1E1E1E; /* 深灰色背景 */
@@ -150,9 +173,6 @@ class NervePoint(QMainWindow):
         #初始並創建todo 的 dock 到左側
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.todo_dock)
         
-        # 連接 visibilityChanged 信號
-        self.todo_dock.visibilityChanged.connect(self.todo_dock_visibilityChange)
-        
         # 這裡是所有圖形項目的容器
         self.scene = QGraphicsScene()
         # --- #1：將雙擊事件綁定到 Scene ---
@@ -164,14 +184,11 @@ class NervePoint(QMainWindow):
         self.setCentralWidget(self.view)
         self.view.setRenderHint(QPainter.RenderHint.Antialiasing) # 反鋸齒
         
-        # --- 修正 #2：移除對 View 事件的覆寫 ---
-        # self.view.mouseDoubleClickEvent = self.on_double_click # <--- 刪除或註解掉這行
         
-        
-
         # --- 自訂捲動軸樣式 ---
         # 使用 QSS (Qt Style Sheets) 來美化捲動軸
         # 這段程式碼會將捲動軸改成現代化的簡潔風格
+        
         stylesheet = """
             QScrollBar:vertical { border: none; background: #181818; width: 8px; margin: 0px; }
             QScrollBar::handle:vertical { background: #606060; min-height: 20px; border-radius: 6px; }
@@ -220,7 +237,7 @@ class NervePoint(QMainWindow):
         self.scene.addItem(rect_item)
 
         # --- 使用自訂的 NodeTextItem ---
-        text_on_rect = NodeTextItem("now node", parent=rect_item)
+        text_on_rect = NodeTextItem(rd.choices(summonWorld, weights=probabilities, k=1)[0], parent=rect_item)
         text_on_rect.setDefaultTextColor(QColor("#000000"))
         
         # 讓方塊知道它的文字項目是誰
@@ -241,32 +258,71 @@ class NervePoint(QMainWindow):
         cursor = text_on_rect.textCursor()
         cursor.select(QTextCursor.SelectionType.Document)
         text_on_rect.setTextCursor(cursor)
+        
+        rect_item.setFlag(QGraphicsRectItem.GraphicsItemFlag.ItemSendsGeometryChanges)
 
-    # QDockWidget 的 visibilityChanged 信號會傳遞一個布林值 (visible)
-    def todo_dock_visibilityChange(self, visible):
-        if(visible != self.lastDockChange and visible == False):
-            print("do list 被關閉")
-        self.lastDockChange = visible
 
     # --- 新增遺失的方法 ---
     def reset_todo_dock(self):
-        """
-        此方法會將 Do List 側邊欄顯示在左側。
-        """
         print("執行復位側邊欄...")
         # 1. 將 QDockWidget 重新加入到主視窗的左側停靠區
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.todo_dock)
         # 2. 確保它是可見的
         self.todo_dock.show()
+        
+    
 
-    # --- 資料新增 ---
-    # def renew_data(self, id, Text, FatherNodeid, coordinate):
-    # {
-    #     try:
-    #         with open(json_path, 'w', encoding='utf-8') as f:
-    #             json.dump(self.json_data, f, ensure_ascii=False, indent=4)
-    #             f
-    # }
+    # --- 資料處理方法 ---
+    def load_data(self):
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                print(f"成功從 {json_path} 讀取資料。")
+                return data
+        except (FileNotFoundError, json.JSONDecodeError):
+            print(f"警告：找不到或無法解析 {json_path}。將使用空資料。")
+            return {"nodeList": []}
+
+    def save_data(self):
+        print(f"執行自動儲存...")
+        try:
+            # 確保目標資料夾存在
+            os.makedirs(os.path.dirname(json_path), exist_ok=True)
+            with open(json_path, 'w', encoding='utf-8') as f:
+                # 使用 json.dump() 將 self.node_data 寫入檔案 f
+                json.dump(self.node_data, f, ensure_ascii=False, indent=4)
+            print("儲存成功。")
+        except Exception as e:
+            print(f"寫入 node_data 失敗: {e}")
+
+    def closeEvent(self, event):
+        """在關閉應用程式前，執行最後一次儲存"""
+        print("正在關閉應用程式，執行最後儲存...")
+        self.save_data()
+        super().closeEvent(event)
+
+    def get_node_by_id(self, node_id):
+        for node in self.node_data["nodeList"]:
+            if node["id"] == node_id:
+                return node
+        return None
+
+    def update_node_text(self, node_id, new_text):
+        node = self.get_node_by_id(node_id)
+        if node:
+            node["Text"] = new_text
+            print(f"資料更新(文字): ID={node_id}")
+
+    def update_node_position(self, node_id, new_pos):
+        node = self.get_node_by_id(node_id)
+        if node:
+            node["coordinate"] = [new_pos.x(), new_pos.y()]
+            print(f"資料更新(位置): ID={node_id}")
+
+    def load_nodes_from_data(self):
+        """讀取 self.node_data 並在畫布上建立所有節點"""
+        for node in self.node_data["nodeList"]:
+            self.builtRect(node["coordinate"][0], node["coordinate"][1], node_data=node)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)

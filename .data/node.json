@@ -1,0 +1,48 @@
+{
+    "nodeList": [
+        {
+            "id": 0,
+            "Text": "root",
+            "FatherNodeid": -1,
+            "coordinate": [
+                0,
+                0,
+                0,
+                0
+            ]
+        },
+        {
+            "id": 1,
+            "Text": "node 1",
+            "FatherNodeid": 0,
+            "coordinate": [
+                0,
+                1,
+                0,
+                0
+            ]
+        },
+        {
+            "id": 2,
+            "Text": "node 2",
+            "FatherNodeid": 1,
+            "coordinate": [
+                0,
+                2,
+                0,
+                0
+            ]
+        },
+        {
+            "id": 3,
+            "Text": "node 3",
+            "FatherNodeid": 1,
+            "coordinate": [
+                1,
+                2,
+                0,
+                0
+            ]
+        }
+    ]
+}
