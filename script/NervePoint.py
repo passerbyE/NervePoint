@@ -76,9 +76,6 @@ class NervePoint(QMainWindow):
         self.timer.timeout.connect(self.save_data)
         self.timer.start(dataUpdateTime)
         
-        # 測試
-        self.load_nodes_from_data()
-        
         # 參數
         self.lastDockChange = True # 初始化 lastDockChange 屬性
         
@@ -319,8 +316,7 @@ class NervePoint(QMainWindow):
             node["coordinate"] = [new_pos.x(), new_pos.y()]
             print(f"資料更新(位置): ID={node_id}")
 
-    def load_nodes_from_data(self):
-        """讀取 self.node_data 並在畫布上建立所有節點"""
+    def load_nodes_from_data(self): #有問題
         for node in self.node_data["nodeList"]:
             self.builtRect(node["coordinate"][0], node["coordinate"][1], node_data=node)
 
