@@ -8,10 +8,11 @@ from PyQt6.QtGui import QColor, QBrush, QPen, QPainter, QAction, QTextCursor
 from PyQt6.QtCore import Qt, QTimer
 import random as rd
 
-# --- 變數 特殊 設定用---
+# --- 變數 特殊 設定用 ---
 dataUpdateTime = 5000
 summonWorld = ["NODE", "(∠ ω< )⌒☆"]
 probabilities = [19, 1]
+
 
 
 # --- 組合路徑的程式碼 ... ---
@@ -19,6 +20,13 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(script_dir)
 json_path = os.path.join(project_root, '.data', 'node.json')
 
+
+# --- 全域函式 ---
+def get_node_by_id(node_id):
+    for node in node_data["nodeList"]:
+        if node["id"] == node_id:
+            return node
+    return None
 
 # --- 自訂圖形項目類別 ---
 
@@ -38,9 +46,10 @@ class NodeTextItem(QGraphicsTextItem):
 
 class NodeRectItem(QGraphicsRectItem):
     """自訂的方塊項目，處理雙擊事件"""
-    def __init__(self, *args, **kwargs):
+    def __init__(self,this_node_id, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.text_item = None # 用來存放對應的文字項目
+        self.this_node_id = this_node_id
 
     def set_text_item(self, text_item):
         self.text_item = text_item
@@ -60,7 +69,7 @@ class NodeRectItem(QGraphicsRectItem):
     def itemChange(self, change, value):
         if change == self.GraphicsItemChange.ItemPositionHasChanged:
             # 當位置移動完成後觸發
-            print(f"方塊位置已變更為: {self.pos()}")
+            print(f"方塊位置已變更為: {self.pos()} ,這個方塊的id: {self.this_node_id}")
             # 在這裡可以加入更新 JSON 資料的邏輯
         return super().itemChange(change, value)
 
@@ -69,7 +78,11 @@ class NervePoint(QMainWindow):
     def __init__(self):
         super().__init__()
         #讀取節點資料
-        self.node_data = self.load_data()
+        global node_data
+        node_data = self.load_data()
+        
+        # --- 插入到json檔案用來設置的 ---
+        self.newest_id = node_data["newest_id"]
         
         #儲存用timmer
         self.timer = QTimer(self)
@@ -226,7 +239,7 @@ class NervePoint(QMainWindow):
     # 設置分塊
     def builtRect(self, posX, posY):
         # --- 使用自訂的 NodeRectItem ---
-        rect_item = NodeRectItem(posX - 50, posY - 25, 100, 50)
+        rect_item = NodeRectItem(node_data["newest_id"] ,posX - 50, posY - 25, 100, 50)
         
         rect_item.setBrush(QBrush(QColor("#DBDBDB"))) 
         rect_item.setPen(QPen(QColor("#C4C4C4"), 2))
@@ -257,7 +270,20 @@ class NervePoint(QMainWindow):
         text_on_rect.setTextCursor(cursor)
         
         rect_item.setFlag(QGraphicsRectItem.GraphicsItemFlag.ItemSendsGeometryChanges)
-
+        
+        # --- 儲存資料 ---
+        new_node_data = {"id": self.newest_id,
+                        "Text": text_on_rect.toPlainText(),
+                        "FatherNodeid": 0, #還沒寫
+                        "coordinate": [
+                            posX,
+                            posY,
+                            rect_height,
+                            rect_height
+                        ]}
+        self.newest_id += 1
+        node_data["newest_id"] = self.newest_id
+        node_data["nodeList"].append(new_node_data)
 
     # --- 新增遺失的方法 ---
     def reset_todo_dock(self):
@@ -286,8 +312,8 @@ class NervePoint(QMainWindow):
             # 確保目標資料夾存在
             os.makedirs(os.path.dirname(json_path), exist_ok=True)
             with open(json_path, 'w', encoding='utf-8') as f:
-                # 使用 json.dump() 將 self.node_data 寫入檔案 f
-                json.dump(self.node_data, f, ensure_ascii=False, indent=4)
+                # 使用 json.dump() 將 node_data 寫入檔案 f
+                json.dump(node_data, f, ensure_ascii=False, indent=4)
             print("儲存成功。")
         except Exception as e:
             print(f"寫入 node_data 失敗: {e}")
@@ -298,17 +324,10 @@ class NervePoint(QMainWindow):
         self.save_data()
         super().closeEvent(event)
 
-    def get_node_by_id(self, node_id):
-        for node in self.node_data["nodeList"]:
-            if node["id"] == node_id:
-                return node
-        return None
-
-    def update_node_text(self, node_id, new_text):
+    def update_node_(self, node_id):
         node = self.get_node_by_id(node_id)
         if node:
-            node["Text"] = new_text
-            print(f"資料更新(文字): ID={node_id}")
+            print(f"資料更新: ID={node_id}")
 
     def update_node_position(self, node_id, new_pos):
         node = self.get_node_by_id(node_id)
@@ -317,7 +336,7 @@ class NervePoint(QMainWindow):
             print(f"資料更新(位置): ID={node_id}")
 
     def load_nodes_from_data(self): #有問題
-        for node in self.node_data["nodeList"]:
+        for node in node_data["nodeList"]:
             self.builtRect(node["coordinate"][0], node["coordinate"][1], node_data=node)
 
 if __name__ == '__main__':
