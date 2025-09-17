@@ -22,11 +22,19 @@ json_path = os.path.join(project_root, '.data', 'node.json')
 
 
 # --- 全域函式 ---
-def get_node_by_id(node_id):
+def get_node_by_id(node_id, Readmode):
+    node_index = 0
     for node in node_data["nodeList"]:
+        node_index += 1
         if node["id"] == node_id:
-            return node
+            if Readmode: return node_index
+            else: return Readmode
+            
     return None
+
+# def updateData():
+#     for node in node_data["nodeList"]:
+#         node[id]
 
 # --- 自訂圖形項目類別 ---
 

@@ -1,5 +1,5 @@
 {
-    "newest_id": 3,
+    "newest_id": 7,
     "nodeList": [
         {
             "id": 0,
@@ -30,6 +30,50 @@
             "coordinate": [
                 -188.0,
                 58.0,
+                50.0,
+                50.0
+            ]
+        },
+        {
+            "id": 3,
+            "Text": "NODE",
+            "FatherNodeid": 0,
+            "coordinate": [
+                -167.0,
+                -135.0,
+                50.0,
+                50.0
+            ]
+        },
+        {
+            "id": 4,
+            "Text": "NODE",
+            "FatherNodeid": 0,
+            "coordinate": [
+                -310.0,
+                -404.0,
+                50.0,
+                50.0
+            ]
+        },
+        {
+            "id": 5,
+            "Text": "NODE",
+            "FatherNodeid": 0,
+            "coordinate": [
+                -380.0,
+                -69.0,
+                50.0,
+                50.0
+            ]
+        },
+        {
+            "id": 6,
+            "Text": "NODE",
+            "FatherNodeid": 0,
+            "coordinate": [
+                -115.0,
+                -193.0,
                 50.0,
                 50.0
             ]
