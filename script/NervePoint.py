@@ -22,21 +22,16 @@ json_path = os.path.join(project_root, '.data', 'node.json')
 
 
 # --- 全域函式 ---
-def get_node_by_id(node_id, Readmode):
+def get_node_by_id(node_id, Readnode):
     node_index = 0
     for node in node_data["nodeList"]:
         node_index += 1
         if node["id"] == node_id:
-            if Readmode: return node_index
-            else: return Readmode
+            if Readnode: return node_index
+            else: return Readnode
             
     return None
 
-# def updateData():
-#     for node in node_data["nodeList"]:
-#         node[id]
-
-# --- 自訂圖形項目類別 ---
 
 class NodeTextItem(QGraphicsTextItem):
     """自訂的文字項目，處理編輯邏輯"""
@@ -71,6 +66,7 @@ class NodeRectItem(QGraphicsRectItem):
             cursor = self.text_item.textCursor()
             cursor.select(QTextCursor.SelectionType.Document)
             self.text_item.setTextCursor(cursor)
+            print(get_node_by_id(self.this_node_id, True))
         # 呼叫父類別的方法，以防有其他預設行為
         super().mouseDoubleClickEvent(event)
 
