@@ -1,7 +1,6 @@
 import sys
 import json
 import os
-import keyboard as kb
 from PyQt6.QtWidgets import QVBoxLayout, QWidget, QApplication,  QDockWidget, QListWidget, QMainWindow, QGraphicsView, QGraphicsScene, QGraphicsRectItem, QGraphicsEllipseItem, QGraphicsTextItem
 # 匯入 QAction 以建立選單項目
 from PyQt6.QtGui import QColor, QBrush, QPen, QPainter, QAction, QTextCursor
@@ -23,6 +22,21 @@ json_path = os.path.join(project_root, '.data', 'node.json')
 
 # --- 全域函式 ---
 def get_node_by_id(node_id, Readnode):
+    """Finds a node within a global node list by its ID.
+    This function iterates through the `node_data["nodeList"]` to find a
+    node matching the provided `node_id`. The return value depends on
+    the `Readnode` flag.
+    Args:
+        node_id (Any): The ID of the node to search for.
+        Readnode (bool): A flag that determines the return value.
+            If True, the function returns the 1-based index of the found node.
+            If False, the function returns False upon finding the node.
+    Returns:
+        Optional[Union[int, bool]]: 
+            - The 1-based index (int) of the node if found and `Readnode` is True.
+            - False (bool) if the node is found and `Readnode` is False.
+            - None if no node with the specified `node_id` is found.
+    """
     node_index = 0
     for node in node_data["nodeList"]:
         node_index += 1
@@ -35,17 +49,43 @@ def get_node_by_id(node_id, Readnode):
 
 class NodeTextItem(QGraphicsTextItem):
     """自訂的文字項目，處理編輯邏輯"""
+    def __init__(self, text, parent=None):
+        super().__init__(text, parent)
+        #文字大小變更事件
+        self.document().contentsChange.connect(self.on_text_changed)
+        
+    def on_text_changed(self):
+        parent_rect = self.parentItem()
+        if parent_rect and hasattr(parent_rect, 'adjust_size_to_text'):
+            parent_rect.adjust_size_to_text()
+        
+    
     def focusOutEvent(self, event):
         # 當文字失去焦點時 (編輯完成)，設回不可編輯狀態
         self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         
         #取消反白
-        curser = self.textCursor()
-        curser.clearSelection()
-        self.setTextCursor(curser)  
+        cursor = self.textCursor()
+        cursor.clearSelection()
+        self.setTextCursor(cursor)  
         
+        # 呼叫父類別的方法
         super().focusOutEvent(event)
-        # 在這裡可以加入更新 JSON 資料的邏輯
+
+        # 取得父項目 (NodeRectItem)
+        parent_rect = self.parentItem()
+        if parent_rect and hasattr(parent_rect, 'this_node_id'):
+            node_id_to_update = parent_rect.this_node_id
+            new_text = self.toPlainText()
+            print(f"文字編輯完成，ID: {node_id_to_update}, 新內容: {new_text}")
+
+            # 更新全域 node_data 中的資料
+            for node in node_data["nodeList"]:
+                if node["id"] == node_id_to_update:
+                    node["Text"] = new_text
+                    print(f"節點 {node_id_to_update} 的資料已更新。")
+                    break
+                
 
 class NodeRectItem(QGraphicsRectItem):
     """自訂的方塊項目，處理雙擊事件"""
@@ -57,25 +97,100 @@ class NodeRectItem(QGraphicsRectItem):
     def set_text_item(self, text_item):
         self.text_item = text_item
 
+    def adjust_size_to_text(self):
+        
+        
+        h = 20
+        v = 10
+        
+        text_rect = self.text_item.boundingRect()
+        print(f"大小: {text_rect}")
+        new_width = text_rect.width() + h *2
+        new_height = text_rect.height() + v *2
+        min_width = 100
+        min_height = 50
+        new_width = max(new_width, min_width)
+        new_height = max(new_height, min_height)
+        
+        current_center = self.scenePos() + self.rect().center()
+
+        # 計算新的左上角座標
+        new_x = current_center.x() - new_width / 2
+        new_y = current_center.y() - new_height / 2
+
+        # 更新方塊的位置和大小
+        self.setPos(new_x, new_y)
+        self.setRect(0, 0, new_width, new_height)
+
+        # 文字本身不需要移動，因為它的座標是相對於方塊的
+        # 但我們需要重新置中它
+        self.text_item.setPos(
+            (new_width - text_rect.width()) / 2,
+            (new_height - text_rect.height()) / 2
+        )
+        
+        for node in node_data["nodeList"]:
+                if node["id"] == self.this_node_id:
+                    # 取得方塊的寬度和高度
+                    width = self.rect().width()
+                    height = self.rect().height()
+                    node["coordinate"] = [
+                        node["coordinate"][0],
+                        node["coordinate"][1],
+                        width,
+                        height
+                    ]
+                    break
+        
+        
     def mouseDoubleClickEvent(self, event):
         # 當方塊被雙擊時，讓其內部的文字進入編輯模式
         if self.text_item:
+            # 儲存方塊目前的中心點
+            self.original_center = self.scenePos() + self.rect().center()
+            
             self.text_item.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
             self.text_item.setFocus()
             # 選取所有文字
             cursor = self.text_item.textCursor()
             cursor.select(QTextCursor.SelectionType.Document)
             self.text_item.setTextCursor(cursor)
-            print(get_node_by_id(self.this_node_id, True))
         # 呼叫父類別的方法，以防有其他預設行為
         super().mouseDoubleClickEvent(event)
 
     def itemChange(self, change, value):
-        if change == self.GraphicsItemChange.ItemPositionHasChanged:
+        # 檢查位置是否已變更
+        if change == QGraphicsRectItem.GraphicsItemChange.ItemPositionHasChanged and self.scene():
             # 當位置移動完成後觸發
-            print(f"方塊位置已變更為: {self.pos()} ,這個方塊的id: {self.this_node_id}")
-            # 在這裡可以加入更新 JSON 資料的邏輯
+            new_pos = value # value 是新的 QPointF 位置
+            
+            # 尋找對應的
+            # 尋找對應的節點資料並更新
+            for node in node_data["nodeList"]:
+                if node["id"] == self.this_node_id:
+                    # 取得方塊的寬度和高度
+                    width = self.rect().width()
+                    height = self.rect().height()
+                    
+                    # 更新座標，我們儲存中心點座標以保持一致
+                    center_x = new_pos.x() + width / 2
+                    center_y = new_pos.y() + height / 2
+                    
+                    node["coordinate"] = [
+                        center_x,
+                        center_y,
+                        width,
+                        height
+                    ]
+                    break
+        
+        
+                    
         return super().itemChange(change, value)
+    
+
+
+
 
 
 class NervePoint(QMainWindow):
@@ -87,6 +202,12 @@ class NervePoint(QMainWindow):
         
         # --- 插入到json檔案用來設置的 ---
         self.newest_id = node_data["newest_id"]
+        
+        # ---互動物件設置 ---
+        self.onitem = None
+        self.mouse_right_click_pos = None
+        self.draw_enable = 0
+        
         
         #儲存用timmer
         self.timer = QTimer(self)
@@ -191,6 +312,14 @@ class NervePoint(QMainWindow):
         self.scene = QGraphicsScene()
         # --- #1：將雙擊事件綁定到 Scene ---
         self.scene.mouseDoubleClickEvent = self.on_scene_double_click
+        
+        # 保存原始的 mouseMoveEvent 處理程序
+        self._original_mouseMoveEvent = self.scene.mouseMoveEvent
+        self.scene.mouseMoveEvent = self.mouse_on_scene
+        #self.scene.mouseMoveEvent = self.drawLine
+        self.scene.contextMenuEvent = self.mouse_right_click
+        
+        
         self.scene.setBackgroundBrush(QColor("#181818"))
 
         # 3. 建立一個 QGraphicsView (檢視/視窗)
@@ -201,7 +330,6 @@ class NervePoint(QMainWindow):
         
         # --- 自訂捲動軸樣式 ---
         # 使用 QSS (Qt Style Sheets) 來美化捲動軸
-        # 這段程式碼會將捲動軸改成現代化的簡潔風格
         
         stylesheet = """
             QScrollBar:vertical { border: none; background: #181818; width: 8px; margin: 0px; }
@@ -215,14 +343,93 @@ class NervePoint(QMainWindow):
             QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0px; }
             QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: none; }
         """
-            
-        self.view.setStyleSheet(stylesheet)
-        # --- 樣式設定結束 ---
+        self.view.verticalScrollBar().setStyleSheet(stylesheet)
+        self.view.horizontalScrollBar().setStyleSheet(stylesheet)
+        
     
     
-    # --- 將巢狀函式移到此處，並轉換為類別方法 ---
+    # 鍵盤事件
+    def keyPressEvent(self, event):
+        keycode = event.key()
+        print(f"組合鍵: {keycode}")
+        match keycode:
+            case 16777223: #del刪除節點
+                print("刪除")
+                if self.onitem and isinstance(self.onitem, NodeRectItem):
+                    node_id_to_delete = self.onitem.this_node_id
+                    print(f"準備刪除節點 ID: {node_id_to_delete}")
 
-    # --- 修正 #3：重新命名並修改此方法以處理 Scene 事件 ---
+                    # 從 scene 中移除圖形項目
+                    self.scene.removeItem(self.onitem)
+
+                    # 從 node_data["nodeList"] 中移除對應的資料
+                    node_data["nodeList"] = [
+                        node for node in node_data["nodeList"] 
+                        if node["id"] != node_id_to_delete
+                    ]
+                    
+                    print(f"節點 {node_id_to_delete} 已被刪除。")
+                    
+                    # 清除 onitem 參考
+                    self.onitem = None
+                    
+                    
+            case 16777216: #esc 刪除json 資料 測試用
+                print("清除json資料")
+                node_data["nodeList"] = []
+
+            
+    def mouse_right_click(self, event):
+        scene_pos = event.scenePos()
+        item = self.scene.itemAt(scene_pos, self.view.transform())
+        if self.onitem and isinstance(self.onitem, NodeRectItem) and not(item is None):
+            self.mouse_right_click_pos = scene_pos
+            print(f"右鍵: {scene_pos}")
+            self.draw_enable = 1 - self.draw_enable
+            pass
+    
+    class NervePoint(QMainWindow):
+        def __init__(self):
+            super().__init__()
+            # ... (您現有的 __init__ 程式碼) ...
+
+            # --- 用於繪製線條的狀態變數 ---
+            self.start_node_item = None
+            self.preview_line = None
+
+            # ... (您現有的 __init__ 程式碼) ...
+
+            # 這裡是所有圖形項目的容器
+            self.scene = QGraphicsScene()
+            # --- 將事件綁定到 Scene ---
+            self.scene.mouseDoubleClickEvent = self.on_scene_double_click
+            self.scene.mousePressEvent = self.scene_mouse_press # 新增
+            self.scene.mouseMoveEvent = self.scene_mouse_move   # 修改
+            self.scene.mouseReleaseEvent = self.scene_mouse_release # 新增
+            # ... (其餘程式碼)
+    
+    #檢測滑鼠事件 用來刪除內容
+    def mouse_on_scene(self, event):
+        # 執行你的自訂邏輯
+        scene_pos = event.scenePos()
+        self.onitem = self.scene.itemAt(scene_pos, self.view.transform())
+        # 呼叫原始的事件處理程序以保留預設行為 (例如拖曳)
+        self._original_mouseMoveEvent(event)
+        self.onitem = self.scene.itemAt(scene_pos, self.view.transform())
+        
+        if self.onitem:
+            if isinstance(self.onitem, NodeTextItem):
+                self.onitem = self.onitem.parentItem()
+        
+        if self.draw_enable:
+            print(type(self.mouse_right_click_pos))
+            if isinstance(self.onitem, NodeRectItem):
+                self.qpainter.drawLine(self.mouse_right_click_pos, scene_pos)
+                pass
+                #QPainter.drawLine(self.mouse_right_click_pos, self.onitem.pos)
+
+
+    #雙擊事件
     def on_scene_double_click(self, event):
         # 檢查點擊位置下方是否有圖形項目
         # event.scenePos() 直接提供場景座標
@@ -288,6 +495,7 @@ class NervePoint(QMainWindow):
         self.newest_id += 1
         node_data["newest_id"] = self.newest_id
         node_data["nodeList"].append(new_node_data)
+
 
     # --- 新增遺失的方法 ---
     def reset_todo_dock(self):
