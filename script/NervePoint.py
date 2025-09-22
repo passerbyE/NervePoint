@@ -1,11 +1,12 @@
 import sys
 import json
 import os
-from PyQt6.QtWidgets import QVBoxLayout, QWidget, QApplication,  QDockWidget, QListWidget, QMainWindow, QGraphicsView, QGraphicsScene, QGraphicsRectItem, QGraphicsEllipseItem, QGraphicsTextItem
+from PyQt6.QtWidgets import QVBoxLayout, QWidget, QApplication,  QDockWidget, QListWidget, QMainWindow, QGraphicsView, QGraphicsScene, QGraphicsRectItem, QGraphicsEllipseItem, QGraphicsTextItem, QGraphicsLineItem
 # 匯入 QAction 以建立選單項目
-from PyQt6.QtGui import QColor, QBrush, QPen, QPainter, QAction, QTextCursor
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QColor, QBrush, QPen, QPainter, QAction, QTextCursor, QPolygonF
+from PyQt6.QtCore import Qt, QTimer, QPointF, QLineF
 import random as rd
+import math 
 
 # --- 變數 特殊 設定用 ---
 dataUpdateTime = 5000
@@ -20,31 +21,108 @@ project_root = os.path.dirname(script_dir)
 json_path = os.path.join(project_root, '.data', 'node.json')
 
 
-# --- 全域函式 ---
-def get_node_by_id(node_id, Readnode):
-    """Finds a node within a global node list by its ID.
-    This function iterates through the `node_data["nodeList"]` to find a
-    node matching the provided `node_id`. The return value depends on
-    the `Readnode` flag.
-    Args:
-        node_id (Any): The ID of the node to search for.
-        Readnode (bool): A flag that determines the return value.
-            If True, the function returns the 1-based index of the found node.
-            If False, the function returns False upon finding the node.
-    Returns:
-        Optional[Union[int, bool]]: 
-            - The 1-based index (int) of the node if found and `Readnode` is True.
-            - False (bool) if the node is found and `Readnode` is False.
-            - None if no node with the specified `node_id` is found.
-    """
-    node_index = 0
-    for node in node_data["nodeList"]:
-        node_index += 1
-        if node["id"] == node_id:
-            if Readnode: return node_index
-            else: return Readnode
+# --- 修正 #1：建立專門的連線類別 ---
+class ConnectionLine(QGraphicsLineItem):
+    """代表兩個節點之間的連線"""
+    def __init__(self, start_item, end_item, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.start_item = start_item
+        self.end_item = end_item
+        self.arrow_size = 6  # 箭頭大小
+        self.arrow_angl = 3
+        # 將線條的圖層設定在節點下方 (Z-value < 0)
+        self.setZValue(-1)
+
+    # --- 修正 #1：覆寫 boundingRect 方法 ---
+    def boundingRect(self):
+        """回傳包含線條與箭頭的邊界矩形"""
+        extra = (self.pen().width() + self.arrow_size) / 2.0
+        return super().boundingRect().adjusted(-extra, -extra, extra, extra)
+
+    # --- 修正 #2：覆寫 paint 方法以繪製箭頭 ---
+    def paint(self, painter, option, widget=None):
+        """繪製線條與箭頭"""
+        # 如果沒有設定畫筆，則不繪製
+        if not self.pen():
+            return
+
+        painter.setPen(self.pen())
+        painter.setBrush(self.pen().color())
+
+        # 取得線條的中心線
+        center_line = self.line()
+        
+        # 繪製主線條
+        painter.drawLine(center_line)
+
+        # --- 計算並繪製箭頭 ---
+        # 取得線條終點和角度
+        end_point = center_line.p2()
+        angle = math.atan2(-center_line.dy(), center_line.dx())
+
+        # 計算箭頭的兩個頂點
+        arrow_p1 = end_point + QPointF(math.sin(angle - math.pi / self.arrow_angl) * self.arrow_size,
+                                       math.cos(angle - math.pi / self.arrow_angl) * self.arrow_size)
+        arrow_p2 = end_point + QPointF(math.sin(angle - math.pi + math.pi / self.arrow_angl) * self.arrow_size,
+                                       math.cos(angle - math.pi + math.pi / self.arrow_angl) * self.arrow_size)
+
+        # 建立箭頭的多邊形
+        arrow_head = QPolygonF([end_point, arrow_p1, arrow_p2])
+        
+        # 繪製並填滿箭頭
+        painter.drawPolygon(arrow_head)
+
+
+    def update_positions(self):
+        """根據節點中心點更新線條的起點和終點"""
+        start_pos = self.start_item.scenePos() + self.start_item.rect().center()
+        
+        # --- 修正 #1：計算與目標方塊邊緣的交點作為終點 ---
+        end_pos = self.get_intersection_point(self.end_item, start_pos)
+
+        self.setLine(start_pos.x(), start_pos.y(), end_pos.x(), end_pos.y())
+
+    # --- 修正 #2：新增計算交點的輔助方法 ---
+    def get_intersection_point(self, target_node, start_pos):
+        """計算從 start_pos 到 target_node 中心的連線與其邊界的交點"""
+        target_center = target_node.scenePos() + target_node.rect().center()
+        
+        # 如果起點和終點太近，直接回傳終點中心以避免計算錯誤
+        if (target_center - start_pos).manhattanLength() < 1:
+            return target_center
+
+        # 建立一條從起點到目標中心的線
+        line = QLineF(start_pos, target_center)
+        
+        # 取得目標節點在場景中的邊界
+        target_rect = target_node.sceneBoundingRect()
+
+        # 取得目標節點的四個邊
+        top_line = QLineF(target_rect.topLeft(), target_rect.topRight())
+        right_line = QLineF(target_rect.topRight(), target_rect.bottomRight())
+        bottom_line = QLineF(target_rect.bottomRight(), target_rect.bottomLeft())
+        left_line = QLineF(target_rect.bottomLeft(), target_rect.topLeft())
+
+        # --- 修正：使用 PyQt6 的 intersects 語法 ---
+        # 依序檢查與四個邊的交點
+        intersection_type, intersect_point = line.intersects(top_line)
+        if intersection_type == QLineF.IntersectionType.BoundedIntersection:
+            return intersect_point
+        
+        intersection_type, intersect_point = line.intersects(right_line)
+        if intersection_type == QLineF.IntersectionType.BoundedIntersection:
+            return intersect_point
             
-    return None
+        intersection_type, intersect_point = line.intersects(bottom_line)
+        if intersection_type == QLineF.IntersectionType.BoundedIntersection:
+            return intersect_point
+            
+        intersection_type, intersect_point = line.intersects(left_line)
+        if intersection_type == QLineF.IntersectionType.BoundedIntersection:
+            return intersect_point
+
+        # 如果沒有找到交點（例如起點在方塊內部），則回傳中心點
+        return target_center
 
 
 class NodeTextItem(QGraphicsTextItem):
@@ -85,7 +163,7 @@ class NodeTextItem(QGraphicsTextItem):
                     node["Text"] = new_text
                     print(f"節點 {node_id_to_update} 的資料已更新。")
                     break
-                
+
 
 class NodeRectItem(QGraphicsRectItem):
     """自訂的方塊項目，處理雙擊事件"""
@@ -93,6 +171,17 @@ class NodeRectItem(QGraphicsRectItem):
         super().__init__(*args, **kwargs)
         self.text_item = None # 用來存放對應的文字項目
         self.this_node_id = this_node_id
+        # --- 修正 #2：新增列表來追蹤連線 ---
+        self.connections = []
+
+    def add_connection(self, connection):
+        """新增一條連線到此節點的追蹤列表"""
+        self.connections.append(connection)
+
+    def remove_connection(self, connection):
+        """從追蹤列表中移除一條連線"""
+        if connection in self.connections:
+            self.connections.remove(connection)
 
     def set_text_item(self, text_item):
         self.text_item = text_item
@@ -161,6 +250,10 @@ class NodeRectItem(QGraphicsRectItem):
     def itemChange(self, change, value):
         # 檢查位置是否已變更
         if change == QGraphicsRectItem.GraphicsItemChange.ItemPositionHasChanged and self.scene():
+            # --- 修正 #3：更新所有相連的線條 ---
+            for conn in self.connections:
+                conn.update_positions()
+
             # 當位置移動完成後觸發
             new_pos = value # value 是新的 QPointF 位置
             
@@ -191,8 +284,6 @@ class NodeRectItem(QGraphicsRectItem):
 
 
 
-
-
 class NervePoint(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -203,13 +294,12 @@ class NervePoint(QMainWindow):
         # --- 插入到json檔案用來設置的 ---
         self.newest_id = node_data["newest_id"]
         
-        # ---互動物件設置 ---
-        self.onitem = None
-        self.mouse_right_click_pos = None
-        self.draw_enable = 0
+        # --- 繪圖與互動狀態變數 ---
+        self.onitem = None # 滑鼠目前懸停的物件
+        self.start_node_item = None # 畫線的起始節點
+        self.preview_line = None # 預覽線條物件
         
-        
-        #儲存用timmer
+        #儲存用timer
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.save_data)
         self.timer.start(dataUpdateTime)
@@ -270,12 +360,11 @@ class NervePoint(QMainWindow):
         # --- 將 QDockWidget 和 QListWidget 的樣式合併並設定在 Dock 上 ---
         self.todo_dock.setStyleSheet("""
             QDockWidget {
-                /* 雖然 QMainWindow 已設定，但這裡可以再次確保 */
                 color: #D4D4D4; 
             }
             QDockWidget::title {
                 background-color: #353535;
-                color: #D4D4D4; /* 明確設定標題文字顏色 */
+                color: #D4D4D4;
                 text-align: Left;
                 padding: 4px;
             }
@@ -310,17 +399,13 @@ class NervePoint(QMainWindow):
         
         # 這裡是所有圖形項目的容器
         self.scene = QGraphicsScene()
-        # --- #1：將雙擊事件綁定到 Scene ---
-        self.scene.mouseDoubleClickEvent = self.on_scene_double_click
-        
-        # 保存原始的 mouseMoveEvent 處理程序
-        self._original_mouseMoveEvent = self.scene.mouseMoveEvent
-        self.scene.mouseMoveEvent = self.mouse_on_scene
-        #self.scene.mouseMoveEvent = self.drawLine
-        self.scene.contextMenuEvent = self.mouse_right_click
-        
-        
         self.scene.setBackgroundBrush(QColor("#181818"))
+
+        # --- 綁定正確的滑鼠事件 ---
+        self.scene.mouseDoubleClickEvent = self.on_scene_double_click
+        self.scene.mousePressEvent = self.scene_mouse_press
+        self.scene.mouseMoveEvent = self.scene_mouse_move
+        self.scene.mouseReleaseEvent = self.scene_mouse_release
 
         # 3. 建立一個 QGraphicsView (檢視/視窗)
         self.view = QGraphicsView(self.scene, self)
@@ -329,8 +414,6 @@ class NervePoint(QMainWindow):
         
         
         # --- 自訂捲動軸樣式 ---
-        # 使用 QSS (Qt Style Sheets) 來美化捲動軸
-        
         stylesheet = """
             QScrollBar:vertical { border: none; background: #181818; width: 8px; margin: 0px; }
             QScrollBar::handle:vertical { background: #606060; min-height: 20px; border-radius: 6px; }
@@ -351,16 +434,31 @@ class NervePoint(QMainWindow):
     # 鍵盤事件
     def keyPressEvent(self, event):
         keycode = event.key()
-        print(f"組合鍵: {keycode}")
+        print(f"按鍵: {keycode}")
         match keycode:
             case 16777223: #del刪除節點
                 print("刪除")
                 if self.onitem and isinstance(self.onitem, NodeRectItem):
-                    node_id_to_delete = self.onitem.this_node_id
+                    node_to_delete = self.onitem # 使用一個更清晰的變數名稱
+                    node_id_to_delete = node_to_delete.this_node_id
                     print(f"準備刪除節點 ID: {node_id_to_delete}")
 
+                    # --- 修正：在刪除節點前，先處理與其相連的線條 ---
+                    # 建立一個要迭代的連線副本，因為我們會在迴圈中修改原始列表
+                    for conn in list(node_to_delete.connections):
+                        # 找到這條線連接的另一個節點
+                        other_node = conn.start_item if conn.end_item == node_to_delete else conn.end_item
+                        
+                        # 讓另一個節點忘記這條線
+                        if other_node:
+                            other_node.remove_connection(conn)
+                        
+                        # 從場景中移除線條圖形
+                        self.scene.removeItem(conn)
+                        print(f"已移除連接到節點 {node_id_to_delete} 的線條。")
+
                     # 從 scene 中移除圖形項目
-                    self.scene.removeItem(self.onitem)
+                    self.scene.removeItem(node_to_delete)
 
                     # 從 node_data["nodeList"] 中移除對應的資料
                     node_data["nodeList"] = [
@@ -373,141 +471,164 @@ class NervePoint(QMainWindow):
                     # 清除 onitem 參考
                     self.onitem = None
                     
-                    
             case 16777216: #esc 刪除json 資料 測試用
                 print("清除json資料")
                 node_data["nodeList"] = []
+                node_data["newest_id"] = 0
 
-            
-    def mouse_right_click(self, event):
+    # --- 滑鼠事件處理 ---
+    def scene_mouse_press(self, event):
+        """處理場景中的滑鼠按下事件"""
         scene_pos = event.scenePos()
         item = self.scene.itemAt(scene_pos, self.view.transform())
-        if self.onitem and isinstance(self.onitem, NodeRectItem) and not(item is None):
-            self.mouse_right_click_pos = scene_pos
-            print(f"右鍵: {scene_pos}")
-            self.draw_enable = 1 - self.draw_enable
-            pass
-    
-    class NervePoint(QMainWindow):
-        def __init__(self):
-            super().__init__()
-            # ... (您現有的 __init__ 程式碼) ...
 
-            # --- 用於繪製線條的狀態變數 ---
-            self.start_node_item = None
-            self.preview_line = None
+        if isinstance(item, NodeTextItem):
+            item = item.parentItem()
 
-            # ... (您現有的 __init__ 程式碼) ...
+        if event.button() == Qt.MouseButton.RightButton and isinstance(item, NodeRectItem):
+            self.start_node_item = item
+            line_pen = QPen(QColor("#E9E9E9"), 2, Qt.PenStyle.DashLine)
+            start_pos = self.start_node_item.scenePos() + self.start_node_item.rect().center()
+            self.preview_line = self.scene.addLine(
+                start_pos.x(), start_pos.y(),
+                scene_pos.x(), scene_pos.y(),
+                line_pen
+            )
+            print(f"開始從節點 {self.start_node_item.this_node_id} 畫線...")
+        else:
+            QGraphicsScene.mousePressEvent(self.scene, event)
 
-            # 這裡是所有圖形項目的容器
-            self.scene = QGraphicsScene()
-            # --- 將事件綁定到 Scene ---
-            self.scene.mouseDoubleClickEvent = self.on_scene_double_click
-            self.scene.mousePressEvent = self.scene_mouse_press # 新增
-            self.scene.mouseMoveEvent = self.scene_mouse_move   # 修改
-            self.scene.mouseReleaseEvent = self.scene_mouse_release # 新增
-            # ... (其餘程式碼)
-    
-    #檢測滑鼠事件 用來刪除內容
-    def mouse_on_scene(self, event):
-        # 執行你的自訂邏輯
+    def scene_mouse_move(self, event):
+        """處理場景中的滑鼠移動事件"""
         scene_pos = event.scenePos()
         self.onitem = self.scene.itemAt(scene_pos, self.view.transform())
-        # 呼叫原始的事件處理程序以保留預設行為 (例如拖曳)
-        self._original_mouseMoveEvent(event)
-        self.onitem = self.scene.itemAt(scene_pos, self.view.transform())
-        
-        if self.onitem:
-            if isinstance(self.onitem, NodeTextItem):
-                self.onitem = self.onitem.parentItem()
-        
-        if self.draw_enable:
-            print(type(self.mouse_right_click_pos))
-            if isinstance(self.onitem, NodeRectItem):
-                self.qpainter.drawLine(self.mouse_right_click_pos, scene_pos)
-                pass
-                #QPainter.drawLine(self.mouse_right_click_pos, self.onitem.pos)
+        if self.onitem and isinstance(self.onitem, NodeTextItem):
+            self.onitem = self.onitem.parentItem()
 
+        if self.preview_line:
+            line = self.preview_line.line()
+            line.setP2(event.scenePos())
+            self.preview_line.setLine(line)
+        else:
+            QGraphicsScene.mouseMoveEvent(self.scene, event)
+
+    def scene_mouse_release(self, event):
+        """處理場景中的滑鼠釋放事件"""
+        line_pen = QPen(QColor("#E9E9E9"), 2, Qt.PenStyle.SolidLine)
+        
+        if self.start_node_item and self.preview_line:
+            scene_pos = event.scenePos()
+            self.preview_line.hide()
+            end_item = self.scene.itemAt(scene_pos, self.view.transform())
+            self.preview_line.show()
+
+            if isinstance(end_item, NodeTextItem):
+                end_item = end_item.parentItem()
+
+            if isinstance(end_item, NodeRectItem) and end_item is not self.start_node_item:
+                print(f"成功連接節點 {self.start_node_item.this_node_id} 到 {end_item.this_node_id}")
+                
+                # --- 修正 #4：處理覆蓋舊連線的邏輯 ---
+                # 檢查起始節點是否已經有一條作為"起點"的連線
+                connection_to_remove = None
+                for conn in self.start_node_item.connections:
+                    # 如果這條線的起點是我們現在的起始節點，就表示要替換它
+                    if conn.start_item == self.start_node_item:
+                        connection_to_remove = conn
+                        break
+                
+                if connection_to_remove:
+                    print(f"節點 {self.start_node_item.this_node_id} 的舊連線已被移除。")
+                    # 從舊的父節點的追蹤中移除
+                    connection_to_remove.end_item.remove_connection(connection_to_remove)
+                    # 從場景中刪除線條圖形
+                    self.scene.removeItem(connection_to_remove)
+                    # 從子節點的追蹤中移除
+                    self.start_node_item.remove_connection(connection_to_remove)
+
+
+                # --- 修正 #5：使用新的 ConnectionLine 類別 ---
+                connection_line = ConnectionLine(self.start_node_item, end_item)
+                connection_line.setPen(line_pen) # 正確的設定方式
+                connection_line.update_positions() # 初始對齊
+                self.scene.addItem(connection_line)
+
+                # 讓節點追蹤這條新連線
+                self.start_node_item.add_connection(connection_line)
+                end_item.add_connection(connection_line)
+                
+                # 更新資料模型
+                for node in node_data["nodeList"]:
+                    if node["id"] == self.start_node_item.this_node_id:
+                        node["FatherNodeid"] = end_item.this_node_id
+                        break
+                
+            else:
+                print("取消連線。")
+
+            self.scene.removeItem(self.preview_line)
+            self.preview_line = None
+            self.start_node_item = None
+        
+        QGraphicsScene.mouseReleaseEvent(self.scene, event)
 
     #雙擊事件
     def on_scene_double_click(self, event):
-        # 檢查點擊位置下方是否有圖形項目
-        # event.scenePos() 直接提供場景座標
         scene_pos = event.scenePos()
         item = self.scene.itemAt(scene_pos, self.view.transform())
         
-        # 如果 item 是 None，表示點擊在空白處
         if item is None:
             print("在空白處雙擊，建立新方塊...")
             self.builtRect(scene_pos.x(), scene_pos.y())
         else:
-            # 如果點擊在現有項目上，則呼叫 QGraphicsScene 的預設處理方式
-            # 這樣事件才能被正確傳遞給被點擊的項目 (NodeRectItem)
             print("在現有項目上雙擊")
             QGraphicsScene.mouseDoubleClickEvent(self.scene, event)
 
 
     # 設置分塊
     def builtRect(self, posX, posY):
-        # --- 使用自訂的 NodeRectItem ---
-        rect_item = NodeRectItem(node_data["newest_id"] ,posX - 50, posY - 25, 100, 50)
+        rect_item = NodeRectItem(self.newest_id, 0, 0, 100, 50)
+        rect_item.setPos(posX - 50, posY - 25)
         
         rect_item.setBrush(QBrush(QColor("#DBDBDB"))) 
         rect_item.setPen(QPen(QColor("#C4C4C4"), 2))
         rect_item.setFlag(QGraphicsRectItem.GraphicsItemFlag.ItemIsMovable)
+        rect_item.setFlag(QGraphicsRectItem.GraphicsItemFlag.ItemSendsGeometryChanges)
         self.scene.addItem(rect_item)
 
-        # --- 使用自訂的 NodeTextItem ---
         text_on_rect = NodeTextItem(rd.choices(summonWorld, weights=probabilities, k=1)[0], parent=rect_item)
         text_on_rect.setDefaultTextColor(QColor("#000000"))
         
-        # 讓方塊知道它的文字項目是誰
         rect_item.set_text_item(text_on_rect)
         
-        # --- 文字置中邏輯 (保持不變) ---
-        rect_width = rect_item.rect().width()
-        rect_height = rect_item.rect().height()
-        text_width = text_on_rect.boundingRect().width()
-        text_height = text_on_rect.boundingRect().height()
-        center_x = (rect_width - text_width) / 2
-        center_y = (rect_height - text_height) / 2
-        text_on_rect.setPos((posX - 50) + center_x,(posY - 25) + center_y)
+        rect_item.adjust_size_to_text()
 
-        # --- 讓新建的文字立即進入編輯模式 (保持不變) ---
         text_on_rect.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
         text_on_rect.setFocus()
         cursor = text_on_rect.textCursor()
         cursor.select(QTextCursor.SelectionType.Document)
         text_on_rect.setTextCursor(cursor)
         
-        rect_item.setFlag(QGraphicsRectItem.GraphicsItemFlag.ItemSendsGeometryChanges)
-        
-        # --- 儲存資料 ---
         new_node_data = {"id": self.newest_id,
                         "Text": text_on_rect.toPlainText(),
-                        "FatherNodeid": 0, #還沒寫
+                        "FatherNodeid": 0,
                         "coordinate": [
                             posX,
                             posY,
-                            rect_height,
-                            rect_height
+                            rect_item.rect().width(),
+                            rect_item.rect().height()
                         ]}
+        node_data["nodeList"].append(new_node_data)
         self.newest_id += 1
         node_data["newest_id"] = self.newest_id
-        node_data["nodeList"].append(new_node_data)
 
 
-    # --- 新增遺失的方法 ---
+    # --- 視窗與資料方法 ---
     def reset_todo_dock(self):
         print("執行復位側邊欄...")
-        # 1. 將 QDockWidget 重新加入到主視窗的左側停靠區
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.todo_dock)
-        # 2. 確保它是可見的
         self.todo_dock.show()
         
-    
-
-    # --- 資料處理方法 ---
     def load_data(self):
         try:
             with open(json_path, 'r', encoding='utf-8') as f:
@@ -515,16 +636,14 @@ class NervePoint(QMainWindow):
                 print(f"成功從 {json_path} 讀取資料。")
                 return data
         except (FileNotFoundError, json.JSONDecodeError):
-            print(f"警告：找不到或無法解析 {json_path}。將使用空資料。")
-            return {"nodeList": []}
+            print(f"警告：找不到或無法解析 {json_path}。將使用預設空資料。")
+            return {"projectName": "test", "newest_id": 1, "nodeList": []}
 
     def save_data(self):
         print(f"執行自動儲存...")
         try:
-            # 確保目標資料夾存在
             os.makedirs(os.path.dirname(json_path), exist_ok=True)
             with open(json_path, 'w', encoding='utf-8') as f:
-                # 使用 json.dump() 將 node_data 寫入檔案 f
                 json.dump(node_data, f, ensure_ascii=False, indent=4)
             print("儲存成功。")
         except Exception as e:
@@ -536,20 +655,11 @@ class NervePoint(QMainWindow):
         self.save_data()
         super().closeEvent(event)
 
-    def update_node_(self, node_id):
-        node = self.get_node_by_id(node_id)
-        if node:
-            print(f"資料更新: ID={node_id}")
-
-    def update_node_position(self, node_id, new_pos):
-        node = self.get_node_by_id(node_id)
-        if node:
-            node["coordinate"] = [new_pos.x(), new_pos.y()]
-            print(f"資料更新(位置): ID={node_id}")
-
-    def load_nodes_from_data(self): #有問題
-        for node in node_data["nodeList"]:
-            self.builtRect(node["coordinate"][0], node["coordinate"][1], node_data=node)
+    def load_nodes_from_data(self):
+        for node_info in node_data["nodeList"]:
+            # 這裡需要一個更完整的 builtRect 版本來處理載入
+            # 暫時跳過以避免錯誤
+            pass
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
