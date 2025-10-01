@@ -1,7 +1,7 @@
 import sys
 import json
 import os
-from PyQt6.QtWidgets import QVBoxLayout, QWidget, QApplication,  QDockWidget, QListWidget, QMainWindow, QGraphicsView, QGraphicsScene, QGraphicsRectItem, QGraphicsEllipseItem, QGraphicsTextItem, QGraphicsLineItem
+from PyQt6.QtWidgets import QVBoxLayout, QWidget, QApplication,  QDockWidget, QTreeWidget, QMainWindow, QGraphicsView, QGraphicsScene, QGraphicsRectItem, QTreeWidgetItem, QGraphicsTextItem, QGraphicsLineItem
 # 匯入 QAction 以建立選單項目
 from PyQt6.QtGui import QColor, QBrush, QPen, QPainter, QAction, QTextCursor, QPolygonF
 from PyQt6.QtCore import Qt, QTimer, QPointF, QLineF
@@ -368,16 +368,16 @@ class NervePoint(QMainWindow):
                 text-align: Left;
                 padding: 4px;
             }
-            QListWidget {
+            QTreeWidget {
                 background-color: #252525;
                 color: #D4D4D4;
                 border: none;
                 font-size: 14px;
             }
-            QListWidget::item:hover {
+            QTreeWidget::item:hover {
                 background-color: #3b3b3b;
             }
-            QListWidget::item:selected {
+            QTreeWidget::item:selected {
                 background-color: #4b4b4b;
                 color: white;
             }
@@ -386,16 +386,22 @@ class NervePoint(QMainWindow):
         # --- 創建todo 物件 ---
         todo_container = QWidget()
         todo_layout = QVBoxLayout()
-        self.todo_list = QListWidget()
-        self.todo_list.addItem("代辦1: 完成節點設計")
-        self.todo_list.addItem("代辦2: 實現連線功能")
-        self.todo_list.addItem("代辦3: 儲存與讀取")
-        todo_layout.addWidget(self.todo_list)
+        self.todo_tree = QTreeWidget()
+        self.todo_tree.setHeaderHidden(True)
+        task1 = QTreeWidgetItem(self.todo_tree, ["點擊空白區域新增節點", "-1"])
+        
+        subTake1 = QTreeWidgetItem(task1, ["完成?", "-1"])
+        
+        self.todo_tree.resizeColumnToContents(0)
+        self.todo_tree.resizeColumnToContents(1)
+        todo_layout.addWidget(self.todo_tree)
         todo_container.setLayout(todo_layout)
         self.todo_dock.setWidget(todo_container)
         
         #初始並創建todo 的 dock 到左側
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.todo_dock)
+        
+        self.todo_tree.doubleClicked.connect(self.todoTree_clicked)
         
         # 這裡是所有圖形項目的容器
         self.scene = QGraphicsScene()
@@ -430,6 +436,91 @@ class NervePoint(QMainWindow):
         self.view.horizontalScrollBar().setStyleSheet(stylesheet)
         
     
+    def updateTree(self):
+        self.todo_tree.clear()
+        # 建立一個字典來快速查找父節點
+        tree_items = {}
+        # 先創建所有節點的 QTreeWidgetItem
+        for node_info in node_data["nodeList"]:
+            # 使用 node_info 的 id 作為第二欄的資料，方便後續查找
+            item = QTreeWidgetItem([node_info["Text"], str(node_info["id"])])
+            tree_items[node_info["id"]] = item
+
+        # 遍歷所有節點來建立父子關係
+        for node_info in node_data["nodeList"]:
+            item = tree_items[node_info["id"]]
+            parent_id = node_info["FatherNodeid"]
+
+            if parent_id != -1 and parent_id in tree_items:
+                # 如果有父節點，將其添加到父節點下
+                parent_item = tree_items[parent_id]
+                parent_item.addChild(item)
+            else:
+                # 如果沒有父節點，將其添加到樹的根部
+                self.todo_tree.addTopLevelItem(item)
+                
+                
+    def todoTree_clicked(self, event):
+        
+        tree_item = self.todo_tree.itemFromIndex(event)
+        if not tree_item or not tree_item.text(1):
+            return
+        
+        #要先完成底層任務才能往上做
+        if tree_item.childCount() > 0:
+            return
+
+        try:
+            node_id_to_delete = int(tree_item.text(1))
+        except (ValueError, TypeError):
+            print(f"無效的節點 ID: {tree_item.text(1)}")
+            return
+
+        print(f"從樹狀圖請求刪除節點 ID: {node_id_to_delete}")
+
+        # --- 尋找場景中對應的 NodeRectItem ---
+        node_to_delete = None
+        for item in self.scene.items():
+            if isinstance(item, NodeRectItem) and item.this_node_id == node_id_to_delete:
+                node_to_delete = item
+                break
+
+        if node_to_delete:
+            # --- 套用與 keyPressEvent 相同的刪除邏輯 ---
+            # 建立一個要迭代的連線副本，因為會在迴圈中修改原始列表
+            for conn in list(node_to_delete.connections):
+                # 找到這條線連接的另一個節點
+                other_node = conn.start_item if conn.end_item == node_to_delete else conn.end_item
+                
+                # 讓另一個節點忘記這條線
+                if other_node:
+                    other_node.remove_connection(conn)
+                
+                # 從場景中移除線條圖形
+                self.scene.removeItem(conn)
+                print(f"已移除連接到節點 {node_id_to_delete} 的線條。")
+
+            # 從 scene 中移除圖形項目 (包含其子項目，如文字)
+            self.scene.removeItem(node_to_delete)
+
+            # 從 node_data["nodeList"] 中移除對應的資料
+            node_data["nodeList"] = [
+                node for node in node_data["nodeList"] 
+                if node["id"] != node_id_to_delete
+            ]
+            
+            print(f"節點 {node_id_to_delete} 已被刪除。")
+
+            # 如果被刪除的節點剛好是 onitem，則清除參考
+            if self.onitem == node_to_delete:
+                self.onitem = None
+            
+            # 更新樹狀圖並儲存
+            self.save_data()
+            self.updateTree()
+        else:
+            print(f"錯誤：在場景中找不到 ID 為 {node_id_to_delete} 的節點圖形。")
+            
     
     # 鍵盤事件
     def keyPressEvent(self, event):
@@ -438,10 +529,12 @@ class NervePoint(QMainWindow):
         match keycode:
             case 16777223: #del刪除節點
                 print("刪除")
+                
                 if self.onitem and isinstance(self.onitem, NodeRectItem):
                     node_to_delete = self.onitem # 使用一個更清晰的變數名稱
                     node_id_to_delete = node_to_delete.this_node_id
                     print(f"準備刪除節點 ID: {node_id_to_delete}")
+                    
 
                     # --- 修正：在刪除節點前，先處理與其相連的線條 ---
                     # 建立一個要迭代的連線副本，因為我們會在迴圈中修改原始列表
@@ -470,11 +563,17 @@ class NervePoint(QMainWindow):
                     
                     # 清除 onitem 參考
                     self.onitem = None
+                
+                self.updateTree()
+                    
                     
             case 16777216: #esc 刪除json 資料 測試用
                 print("清除json資料")
                 node_data["nodeList"] = []
                 node_data["newest_id"] = 0
+                
+            case 16777219: #back 用來測試的
+                self.updateTree()
 
     # --- 滑鼠事件處理 ---
     def scene_mouse_press(self, event):
@@ -571,6 +670,9 @@ class NervePoint(QMainWindow):
             self.start_node_item = None
         
         QGraphicsScene.mouseReleaseEvent(self.scene, event)
+        self.save_data()
+        self.updateTree()
+        self.todo_tree.expandAll() 
 
     #雙擊事件
     def on_scene_double_click(self, event):
@@ -611,7 +713,7 @@ class NervePoint(QMainWindow):
         
         new_node_data = {"id": self.newest_id,
                         "Text": text_on_rect.toPlainText(),
-                        "FatherNodeid": 0,
+                        "FatherNodeid": -1,
                         "coordinate": [
                             posX,
                             posY,
@@ -621,6 +723,7 @@ class NervePoint(QMainWindow):
         node_data["nodeList"].append(new_node_data)
         self.newest_id += 1
         node_data["newest_id"] = self.newest_id
+        self.save_data()
 
 
     # --- 視窗與資料方法 ---
@@ -640,12 +743,10 @@ class NervePoint(QMainWindow):
             return {"projectName": "test", "newest_id": 1, "nodeList": []}
 
     def save_data(self):
-        print(f"執行自動儲存...")
         try:
             os.makedirs(os.path.dirname(json_path), exist_ok=True)
             with open(json_path, 'w', encoding='utf-8') as f:
                 json.dump(node_data, f, ensure_ascii=False, indent=4)
-            print("儲存成功。")
         except Exception as e:
             print(f"寫入 node_data 失敗: {e}")
 
