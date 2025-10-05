@@ -1,4 +1,5 @@
 import sys
+from google import genai
 import json
 import os
 from PyQt6.QtWidgets import QVBoxLayout, QWidget, QApplication,  QDockWidget, QTreeWidget, QMainWindow, QGraphicsView, QGraphicsScene, QGraphicsRectItem, QTreeWidgetItem, QGraphicsTextItem, QGraphicsLineItem
@@ -7,6 +8,12 @@ from PyQt6.QtGui import QColor, QBrush, QPen, QPainter, QAction, QTextCursor, QP
 from PyQt6.QtCore import Qt, QTimer, QPointF, QLineF
 import random as rd
 import math 
+
+
+# --- gemini設定 ---
+client = genai.client(api_key="AIzaSyD73qU-yigihNqs9h-TtFeLZm_LcZViNLg")
+model = genai.GenerativeModel('gemini-2.5-flash')
+chat = model.start_chat(history=[])
 
 # --- 變數 特殊 設定用 ---
 dataUpdateTime = 5000
@@ -403,6 +410,11 @@ class NervePoint(QMainWindow):
         
         self.todo_tree.doubleClicked.connect(self.todoTree_clicked)
         
+        # --- 步驟 1: 初始化狀態列 ---
+        # 取得或建立一個狀態列，並設定其樣式
+        self.status_bar = self.statusBar()
+        self.status_bar.setStyleSheet("background-color: #353535; color: #D4D4D4;")
+
         # 這裡是所有圖形項目的容器
         self.scene = QGraphicsScene()
         self.scene.setBackgroundBrush(QColor("#181818"))
@@ -436,6 +448,16 @@ class NervePoint(QMainWindow):
         self.view.horizontalScrollBar().setStyleSheet(stylesheet)
         
     
+    # --- 步驟 2: 建立一個顯示通知的函式 ---
+    def show_notification(self, message, timeout=3000):
+        """
+        在視窗底部的狀態列顯示一條訊息，並在指定時間後自動消失。
+        :param message: 要顯示的字串訊息。
+        :param timeout: 訊息顯示的毫秒數 (預設為 3000ms = 3秒)。
+        """
+        self.status_bar.showMessage(message, timeout)
+
+
     def updateTree(self):
         self.todo_tree.clear()
         # 建立一個字典來快速查找父節點
@@ -515,9 +537,11 @@ class NervePoint(QMainWindow):
             if self.onitem == node_to_delete:
                 self.onitem = None
             
+            self.show_notification(f"恭喜完成工作: {tree_item.text(0)} 辛苦了 !!!!")
             # 更新樹狀圖並儲存
             self.save_data()
             self.updateTree()
+            
         else:
             print(f"錯誤：在場景中找不到 ID 為 {node_id_to_delete} 的節點圖形。")
             
@@ -560,7 +584,10 @@ class NervePoint(QMainWindow):
                     ]
                     
                     print(f"節點 {node_id_to_delete} 已被刪除。")
-                    
+
+                    # --- 在刪除成功後呼叫通知 ---
+                    self.show_notification(f"節點 {node_id_to_delete} 已刪除")
+
                     # 清除 onitem 參考
                     self.onitem = None
                 
@@ -747,6 +774,7 @@ class NervePoint(QMainWindow):
             os.makedirs(os.path.dirname(json_path), exist_ok=True)
             with open(json_path, 'w', encoding='utf-8') as f:
                 json.dump(node_data, f, ensure_ascii=False, indent=4)
+
         except Exception as e:
             print(f"寫入 node_data 失敗: {e}")
 
