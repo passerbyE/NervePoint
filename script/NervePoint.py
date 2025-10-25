@@ -2,19 +2,226 @@ import sys
 from google import genai
 import json
 import os
-from PyQt6.QtWidgets import QVBoxLayout, QWidget, QApplication,  QDockWidget, QTreeWidget, QMainWindow, QGraphicsView, QGraphicsScene, QGraphicsRectItem, QTreeWidgetItem, QGraphicsTextItem, QGraphicsLineItem
-# 匯入 QAction 以建立選單項目
-from PyQt6.QtGui import QColor, QBrush, QPen, QPainter, QAction, QTextCursor, QPolygonF
+import math
+from PyQt6.QtWidgets import (
+    QVBoxLayout, QHBoxLayout, QWidget, QApplication, QDockWidget, QTreeWidget, QMainWindow, 
+    QGraphicsView, QGraphicsScene, QGraphicsRectItem, QTreeWidgetItem, QGraphicsTextItem, 
+    QGraphicsLineItem, QLineEdit, QLabel, QPushButton, QTextEdit, QScrollArea
+)
 from PyQt6.QtCore import Qt, QTimer, QPointF, QLineF
-import random as rd
-import math 
+from PyQt6.QtGui import QColor, QBrush, QPen, QPainter, QAction, QTextCursor, QPolygonF
 
+# --- 新增：浮動聊天視窗類別 ---
+class FloatingChatWindow(QWidget):
+    """浮動在滑鼠右上角的聊天視窗"""
+    
+    def __init__(self, parent=None, node_id=None, gemini_model=None):
+        super().__init__(parent)
+        
+        self.node_id = node_id
+        self.gemini_model = gemini_model
+        self.chat_session = None
+        
+        # 建立對話工作階段
+        if self.gemini_model:
+            self.chat_session = self.gemini_model.start_chat(history=[])
+        
+        # 設定視窗樣式
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        
+        # 建立佈局
+        main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+        
+        # 標題欄
+        title_layout = QHBoxLayout()
+        title_layout.setContentsMargins(10, 8, 10, 8)
+        title_label = QLabel(f"與節點 #{node_id} 聊天")
+        title_label.setStyleSheet("color: #D4D4D4; font-weight: bold; font-size: 12px;")
+        title_layout.addWidget(title_label)
+        title_layout.addStretch()
+        
+        close_button = QPushButton("×")
+        close_button.setMaximumWidth(25)
+        close_button.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #D4D4D4;
+                border: none;
+                font-size: 16px;
+            }
+            QPushButton:hover {
+                background-color: #3E3E3E;
+            }
+        """)
+        close_button.clicked.connect(self.hide)
+        title_layout.addWidget(close_button)
+        
+        title_widget = QWidget()
+        title_widget.setLayout(title_layout)
+        title_widget.setStyleSheet("background-color: #2D2D30;")
+        main_layout.addWidget(title_widget)
+        
+        # 訊息顯示區域
+        self.message_display = QTextEdit()
+        self.message_display.setReadOnly(True)
+        self.message_display.setStyleSheet("""
+            QTextEdit {
+                background-color: #1E1E1E;
+                color: #D4D4D4;
+                border: none;
+                padding: 10px;
+                font-size: 11px;
+            }
+            QScrollBar:vertical {
+                border: none;
+                background: #252526;
+                width: 8px;
+            }
+            QScrollBar::handle:vertical {
+                background: #606060;
+                min-height: 20px;
+                border-radius: 4px;
+            }
+        """)
+        self.message_display.setMinimumHeight(250)
+        self.message_display.setMinimumWidth(300)
+        main_layout.addWidget(self.message_display)
+        
+        # 輸入區域
+        input_layout = QHBoxLayout()
+        input_layout.setContentsMargins(10, 5, 10, 10)
+        input_layout.setSpacing(5)
+        
+        self.input_field = QLineEdit()
+        self.input_field.setPlaceholderText("輸入訊息...")
+        self.input_field.setStyleSheet("""
+            QLineEdit {
+                background-color: #2D2D30;
+                color: #D4D4D4;
+                border: 1px solid #4b4b4b;
+                padding: 5px;
+                border-radius: 3px;
+            }
+            QLineEdit:focus {
+                border: 1px solid #007ACC;
+            }
+        """)
+        self.input_field.returnPressed.connect(self.send_message)
+        input_layout.addWidget(self.input_field)
+        
+        send_button = QPushButton("發送")
+        send_button.setMaximumWidth(50)
+        send_button.setStyleSheet("""
+            QPushButton {
+                background-color: #007ACC;
+                color: #FFFFFF;
+                border: none;
+                padding: 5px;
+                border-radius: 3px;
+            }
+            QPushButton:hover {
+                background-color: #0098FF;
+            }
+            QPushButton:pressed {
+                background-color: #005A9E;
+            }
+        """)
+        send_button.clicked.connect(self.send_message)
+        input_layout.addWidget(send_button)
+        
+        input_widget = QWidget()
+        input_widget.setLayout(input_layout)
+        input_widget.setStyleSheet("background-color: #252526;")
+        main_layout.addWidget(input_widget)
+        
+        self.setLayout(main_layout)
+        
+        # 設定整體背景
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #252526;
+                border: 1px solid #4b4b4b;
+                border-radius: 5px;
+            }
+        """)
+    
+    def send_message(self):
+        """發送訊息到 AI"""
+        user_text = self.input_field.text().strip()
+        if not user_text:
+            return
+        
+        # 顯示使用者訊息
+        self.display_message(f"你: {user_text}", is_user=True)
+        self.input_field.clear()
+        
+        # 如果沒有 Gemini 模型，只顯示訊息
+        if not self.chat_session:
+            self.display_message("AI: 無法連接到 AI 模型", is_ai=True)
+            return
+        
+        # 發送訊息到 AI 並顯示回應
+        try:
+            self.input_field.setEnabled(False)
+            self.display_message("AI: 思考中...", is_thinking=True)
+            
+            response = self.chat_session.send_message(user_text)
+            
+            # 移除 "思考中..." 的訊息
+            cursor = self.message_display.textCursor()
+            cursor.movePosition(QTextCursor.MoveOperation.End)
+            cursor.movePosition(QTextCursor.MoveOperation.StartOfLine)
+            cursor.movePosition(QTextCursor.MoveOperation.EndOfLine, QTextCursor.MoveMode.KeepAnchor)
+            cursor.removeSelectedText()
+            
+            # 顯示 AI 回應
+            self.display_message(f"AI: {response.text}", is_ai=True)
+            
+            self.input_field.setEnabled(True)
+            self.input_field.setFocus()
+        except Exception as e:
+            self.display_message(f"AI: 發生錯誤 - {str(e)}", is_error=True)
+            self.input_field.setEnabled(True)
+    
+    def display_message(self, message, is_user=False, is_ai=False, is_thinking=False, is_error=False):
+        """將訊息顯示在聊天區域"""
+        cursor = self.message_display.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        self.message_display.setTextCursor(cursor)
+        
+        # 設定訊息顏色
+        if is_user:
+            color = "#007ACC"
+        elif is_ai:
+            color = "#4EC9B0"
+        elif is_thinking:
+            color = "#808080"
+        elif is_error:
+            color = "#F48771"
+        else:
+            color = "#D4D4D4"
+        
+        # 在訊息前插入顏色標籤
+        self.message_display.setTextColor(QColor(color))
+        self.message_display.append(message)
+        
+        # 自動滾動到最下方
+        scrollbar = self.message_display.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
+    
+    def show_at_mouse(self):
+        """在滑鼠右上角顯示此視窗"""
+        mouse_pos = QApplication.instance().primaryScreen().cursorPos()
+        x = mouse_pos.x() + 15
+        y = mouse_pos.y() - 10
+        self.move(x, y)
+        self.show()
+        self.input_field.setFocus()
 
-# --- gemini設定 ---
-client = genai.client(api_key="AIzaSyD73qU-yigihNqs9h-TtFeLZm_LcZViNLg")
-model = genai.GenerativeModel('gemini-2.5-flash')
-chat = model.start_chat(history=[])
-
+# --- 原有程式碼 ---
 # --- 變數 特殊 設定用 ---
 dataUpdateTime = 5000
 summonWorld = ["NODE", "(∠ ω< )⌒☆"]
@@ -33,6 +240,21 @@ class ConnectionLine(QGraphicsLineItem):
     """代表兩個節點之間的連線"""
     def __init__(self, start_item, end_item, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        
+        # --- gemini設定 ---
+        # try:
+        #     genai.configure(api_key="AIzaSyD73qU-yigihNqs9h-TtFeLZm_LcZViNLg")
+        #     system_instruction = "你是一位知識淵博、風趣幽默的總結人員。請用生動有趣的方式回答所有問題，並在適當的時候加入一些題目相關的冷知識。"
+
+        #     model = genai.GenerativeModel(
+        #         model_name="gemini-2.5-pro-latest",
+        #         system_instruction=system_instruction
+        #     )
+        # except Exception as e:
+        #     print(f"載入模型出現問題: {e}")
+        #     exit()
+        
+        
         self.start_item = start_item
         self.end_item = end_item
         self.arrow_size = 6  # 箭頭大小
@@ -131,6 +353,11 @@ class ConnectionLine(QGraphicsLineItem):
         # 如果沒有找到交點（例如起點在方塊內部），則回傳中心點
         return target_center
 
+
+class FloatingChatWindow(QWidget):
+    """滑鼠右上角浮動窗口"""
+    def __init__(self, parent = ..., flags = ...):
+        super().__init__(parent, flags)
 
 class NodeTextItem(QGraphicsTextItem):
     """自訂的文字項目，處理編輯邏輯"""
