@@ -1,5 +1,4 @@
 import sys
-from google import genai
 import json
 import os
 from PyQt6.QtWidgets import QVBoxLayout, QWidget, QApplication,  QDockWidget, QTreeWidget, QMainWindow, QGraphicsView, QGraphicsScene, QGraphicsRectItem, QTreeWidgetItem, QGraphicsTextItem, QGraphicsLineItem

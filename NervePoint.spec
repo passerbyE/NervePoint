@@ -2,11 +2,11 @@
 
 
 a = Analysis(
-    ['C:\\Users\\info115\\Desktop\\NervePoint\\script\\NervePoint.py'],
+    ['script\\NervePoint.py'],
     pathex=[],
     binaries=[],
     datas=[],
-    hiddenimports=[],
+    hiddenimports=['PyQt6', 'google.generativeai'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -29,7 +29,7 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
