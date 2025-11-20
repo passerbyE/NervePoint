@@ -1,17 +1,5 @@
 {
     "projectName": "test",
-    "newest_id": 1,
-    "nodeList": [
-        {
-            "id": 0,
-            "Text": "NODE",
-            "FatherNodeid": -1,
-            "coordinate": [
-                -184.0,
-                -276.0,
-                100.0,
-                50.0
-            ]
-        }
-    ]
+    "newest_id": 11,
+    "nodeList": []
 }

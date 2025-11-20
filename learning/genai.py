@@ -1,38 +1,34 @@
-import google.generativeai as genai
-genai.configure(api_key="AIzaSyD73qU-yigihNqs9h-TtFeLZm_LcZViNLg")
-system_instruction = "你是一位知識淵博、風趣幽默的總結人員。請用生動有趣的方式回答所有問題，並在適當的時候加入一些題目相關的冷知識。"
+from google import genai
 
-model = genai.GenerativeModel(
-    model_name="gemini-2.5-pro-latest",
-    system_instruction=system_instruction
-)
+request = ""
+outtime = False
+client = genai.Client(api_key="AIzaSyCOwpkE4nPRJgcqa8isGTHAA_zQZ9Sbr30")
+model="gemini-2.5-flash"
 
-# --- 2. 建立一個會自動記錄對話的 ChatSession ---
-# history=[] 表示從一個全新的對話開始
-chat = model.start_chat(history=[])
-
-print("--- 已啟動與歷史學家的對話 ---")
-print("輸入 'end' 結束聊天，輸入 'history' 查看對話紀錄。")
-
-while True:
-    content = input("你: ")
-    if content.lower() == "end":
-        break
-    if content.lower() == 'history':
-        # 方便除錯，查看目前的對話紀錄
-        print("--- 對話紀錄 ---")
-        for message in chat.history:
-            print(f"[{message.role}]: {message.parts[0].text}")
-        print("-----------------")
-        continue
-
-    print("(思考中...): ", end="", flush=True)
+def ask(request, model):
+#--- gemini設定 ---
+    try:
+        response = client.models.generate_content(
+            model=model, contents=request
+        )
+        print(f"{model}回答: {response.candidates[0].content.parts[0].text}")
+        return 0
+    except Exception as e:
+        return e
     
-    # --- 3. 發送訊息，ChatSession 會自動附上歷史紀錄 ---
-    response = chat.send_message(content)
-    
-    # 清除 "思考中..." 的提示並輸出回應
-    print("\r" + " " * 25 + "\r", end="") 
-    print("回答: ", response.text, flush=True)
 
-print("結束聊天")
+if __name__ == '__main__':
+    
+    print(f"~~~這裡是大賢者{model}問出你的疑問吧~~~")
+    while True:
+        if(outtime): request = input("you: ")
+        
+        if(request == "end"):
+            print("結束聊天")
+            break
+        
+        else:
+            if ask(request, model) != 0:
+                outtime = True
+                continue
+            else: outtime = False
