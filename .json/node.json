@@ -1,13 +1,4 @@
 {
     "nodeList": [
-        {
-            "id": 1,
-            "Text": "NODE",
-            "FatherNodeid": null,
-            "coordinate": [
-                19.0,
-                -36.0
-            ]
-        }
     ]
 }

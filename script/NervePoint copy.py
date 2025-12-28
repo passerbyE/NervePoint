@@ -322,33 +322,33 @@ class NervePoint(QMainWindow):
         # --- 全域樣式設定 ---
         self.setStyleSheet("""
             QMainWindow {
-                background-color: #1E1E1E; /* 深灰色背景 */
-                color: #D4D4D4;           /* 淺灰色文字 */
+                background-color: #FFFFFF; /* 白色背景 */
+                color: #000000;           /* 黑色文字 */
             }
             QMenuBar {
-                background-color: #2D2D2D;
-                color: #D4D4D4;
+                background-color: #F0F0F0;
+                color: #000000;
             }
             QMenuBar::item:selected {
-                background-color: #3E3E3E;
-                color: #D4D4D4;
+                background-color: #E0E0E0;
+                color: #000000;
             }
             QMenu {
-                background-color: #252526;
-                border: 1px solid #3E3E3E;
-                color: #D4D4D4;
+                background-color: #FFFFFF;
+                border: 1px solid #CCCCCC;
+                color: #000000;
             }
             QMenu::item:selected{
-                background-color: #3E3E3E;
-                color: #D4D4D4;
+                background-color: #E0E0E0;
+                color: #000000;
             }
             QListWidget::item:selected {
-                background-color: #4b4b4b;
-                color: #D4D4D4;
+                background-color: #CCE8FF;
+                color: #000000;
             }
             QDockWidget::title {
-                background-color: #353535;
-                color: #D4D4D4; 
+                background-color: #F0F0F0;
+                color: #000000; 
                 text-align: Left;
                 padding: 4px;
             }
@@ -369,26 +369,26 @@ class NervePoint(QMainWindow):
         # --- 將 QDockWidget 和 QListWidget 的樣式合併並設定在 Dock 上 ---
         self.todo_dock.setStyleSheet("""
             QDockWidget {
-                color: #D4D4D4; 
+                color: #000000; 
             }
             QDockWidget::title {
-                background-color: #353535;
-                color: #D4D4D4;
+                background-color: #F0F0F0;
+                color: #000000;
                 text-align: Left;
                 padding: 4px;
             }
             QTreeWidget {
-                background-color: #252525;
-                color: #D4D4D4;
+                background-color: #FFFFFF;
+                color: #000000;
                 border: none;
                 font-size: 14px;
             }
             QTreeWidget::item:hover {
-                background-color: #3b3b3b;
+                background-color: #F0F0F0;
             }
             QTreeWidget::item:selected {
-                background-color: #4b4b4b;
-                color: white;
+                background-color: #CCE8FF;
+                color: #000000;
             }
         """)
 
@@ -415,11 +415,11 @@ class NervePoint(QMainWindow):
         # --- 步驟 1: 初始化狀態列 ---
         # 取得或建立一個狀態列，並設定其樣式
         self.status_bar = self.statusBar()
-        self.status_bar.setStyleSheet("background-color: #353535; color: #D4D4D4;")
+        self.status_bar.setStyleSheet("background-color: #F0F0F0; color: #000000;")
 
         # 這裡是所有圖形項目的容器
         self.scene = QGraphicsScene()
-        self.scene.setBackgroundBrush(QColor("#181818"))
+        self.scene.setBackgroundBrush(QColor("#FFFFFF"))
 
         # --- 綁定正確的滑鼠事件 ---
         self.scene.mouseDoubleClickEvent = self.on_scene_double_click
@@ -435,20 +435,23 @@ class NervePoint(QMainWindow):
         
         # --- 自訂捲動軸樣式 ---
         stylesheet = """
-            QScrollBar:vertical { border: none; background: #181818; width: 8px; margin: 0px; }
-            QScrollBar::handle:vertical { background: #606060; min-height: 20px; border-radius: 6px; }
-            QScrollBar::handle:vertical:hover { background: #808080; }
+            QScrollBar:vertical { border: none; background: #F0F0F0; width: 8px; margin: 0px; }
+            QScrollBar::handle:vertical { background: #CCCCCC; min-height: 20px; border-radius: 6px; }
+            QScrollBar::handle:vertical:hover { background: #AAAAAA; }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; }
-            QScrollBar:horizontal { border: none; background: #181818; height: 8px; margin: 0px; }
-            QScrollBar::handle:horizontal { background: #606060; min-width: 20px; border-radius: 6px; }
-            QScrollBar::handle:horizontal:hover { background: #808080; }
+            QScrollBar:horizontal { border: none; background: #F0F0F0; height: 8px; margin: 0px; }
+            QScrollBar::handle:horizontal { background: #CCCCCC; min-width: 20px; border-radius: 6px; }
+            QScrollBar::handle:horizontal:hover { background: #AAAAAA; }
             QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0px; }
             QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: none; }
         """
         self.view.verticalScrollBar().setStyleSheet(stylesheet)
         self.view.horizontalScrollBar().setStyleSheet(stylesheet)
         
+        # --- 載入已存在的節點和連線 ---
+        self.load_nodes_from_data()
+        self.updateTree()
     
     # --- 步驟 2: 建立一個顯示通知的函式 ---
     def show_notification(self, message, timeout=3000):
@@ -611,7 +614,7 @@ class NervePoint(QMainWindow):
 
         if event.button() == Qt.MouseButton.RightButton and isinstance(item, NodeRectItem):
             self.start_node_item = item
-            line_pen = QPen(QColor("#E9E9E9"), 2, Qt.PenStyle.DashLine)
+            line_pen = QPen(QColor("#666666"), 2, Qt.PenStyle.DashLine)
             start_pos = self.start_node_item.scenePos() + self.start_node_item.rect().center()
             self.preview_line = self.scene.addLine(
                 start_pos.x(), start_pos.y(),
@@ -638,7 +641,7 @@ class NervePoint(QMainWindow):
 
     def scene_mouse_release(self, event):
         """處理場景中的滑鼠釋放事件"""
-        line_pen = QPen(QColor("#E9E9E9"), 2, Qt.PenStyle.SolidLine)
+        line_pen = QPen(QColor("#666666"), 2, Qt.PenStyle.SolidLine)
         
         if self.start_node_item and self.preview_line:
             scene_pos = event.scenePos()
@@ -714,8 +717,8 @@ class NervePoint(QMainWindow):
         rect_item = NodeRectItem(self.newest_id, 0, 0, 100, 50)
         rect_item.setPos(posX - 50, posY - 25)
         
-        rect_item.setBrush(QBrush(QColor("#DBDBDB"))) 
-        rect_item.setPen(QPen(QColor("#C4C4C4"), 2))
+        rect_item.setBrush(QBrush(QColor("#F5F5F5"))) 
+        rect_item.setPen(QPen(QColor("#999999"), 2))
         rect_item.setFlag(QGraphicsRectItem.GraphicsItemFlag.ItemIsMovable)
         rect_item.setFlag(QGraphicsRectItem.GraphicsItemFlag.ItemSendsGeometryChanges)
         self.scene.addItem(rect_item)
@@ -780,10 +783,80 @@ class NervePoint(QMainWindow):
         super().closeEvent(event)
 
     def load_nodes_from_data(self):
+        """從 node_data 載入所有節點並建立連線"""
+        # 第一階段：創建所有節點並保存引用
+        node_items = {}  # {node_id: NodeRectItem}
+        
         for node_info in node_data["nodeList"]:
-            # 這裡需要一個更完整的 builtRect 版本來處理載入
-            # 暫時跳過以避免錯誤
-            pass
+            node_id = node_info["id"]
+            text = node_info["Text"]
+            coordinate = node_info["coordinate"]
+            
+            # coordinate 格式: [center_x, center_y, width, height]
+            center_x, center_y, width, height = coordinate
+            
+            # 創建節點方塊
+            rect_item = self.create_node_from_data(node_id, text, center_x, center_y, width, height)
+            node_items[node_id] = rect_item
+        
+        # 第二階段：根據 FatherNodeid 建立連線
+        line_pen = QPen(QColor("#666666"), 2, Qt.PenStyle.SolidLine)
+        
+        for node_info in node_data["nodeList"]:
+            node_id = node_info["id"]
+            father_id = node_info["FatherNodeid"]
+            
+            # 如果有父節點，則建立連線（從子節點指向父節點）
+            if father_id != -1 and father_id in node_items:
+                child_item = node_items[node_id]
+                parent_item = node_items[father_id]
+                
+                # 創建連線（從子節點到父節點）
+                connection_line = ConnectionLine(child_item, parent_item)
+                connection_line.setPen(line_pen)
+                connection_line.update_positions()
+                self.scene.addItem(connection_line)
+                
+                # 讓節點追蹤這條連線
+                child_item.add_connection(connection_line)
+                parent_item.add_connection(connection_line)
+                
+                print(f"已建立連線：節點 {node_id} → 節點 {father_id}")
+        
+        print(f"成功載入 {len(node_items)} 個節點")
+    
+    def create_node_from_data(self, node_id, text, center_x, center_y, width, height):
+        """從資料創建一個節點"""
+        # 計算左上角座標（因為 setPos 使用左上角）
+        pos_x = center_x - width / 2
+        pos_y = center_y - height / 2
+        
+        # 創建方塊項目
+        rect_item = NodeRectItem(node_id, 0, 0, width, height)
+        rect_item.setPos(pos_x, pos_y)
+        
+        # 設置節點顏色（白色主題）
+        rect_item.setBrush(QBrush(QColor("#F5F5F5")))
+        rect_item.setPen(QPen(QColor("#999999"), 2))
+        
+        rect_item.setFlag(QGraphicsRectItem.GraphicsItemFlag.ItemIsMovable)
+        rect_item.setFlag(QGraphicsRectItem.GraphicsItemFlag.ItemSendsGeometryChanges)
+        self.scene.addItem(rect_item)
+        
+        # 創建文字項目
+        text_on_rect = NodeTextItem(text, parent=rect_item)
+        text_on_rect.setDefaultTextColor(QColor("#000000"))
+        
+        rect_item.set_text_item(text_on_rect)
+        
+        # 調整文字位置（置中）
+        text_rect = text_on_rect.boundingRect()
+        text_on_rect.setPos(
+            (width - text_rect.width()) / 2,
+            (height - text_rect.height()) / 2
+        )
+        
+        return rect_item
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
