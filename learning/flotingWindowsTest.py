@@ -67,7 +67,7 @@ project_root = os.path.dirname(script_dir)
 json_path = os.path.join(project_root, '.data', 'node.json')
 
 
-# --- 修正 #1：建立專門的連線類別 ---
+# --- ConnectionLine 類別 ---
 class ConnectionLine(QGraphicsLineItem):
     """代表兩個節點之間的連線"""
     def __init__(self, start_item, end_item, *args, **kwargs):
@@ -82,11 +82,13 @@ class ConnectionLine(QGraphicsLineItem):
         # 將線條的圖層設定在節點下方 (Z-value < 0)
         self.setZValue(-1)
 
+    # --- 修正 #1：覆寫 boundingRect 方法 ---
     def boundingRect(self):
         """回傳包含線條與箭頭的邊界矩形"""
         extra = (self.pen().width() + self.arrow_size) / 2.0
         return super().boundingRect().adjusted(-extra, -extra, extra, extra)
 
+    # --- 修正 #2：覆寫 paint 方法以繪製箭頭 ---
     def paint(self, painter, option, widget=None):
         """繪製線條與箭頭"""
         # 如果沒有設定畫筆，則不繪製
@@ -124,10 +126,12 @@ class ConnectionLine(QGraphicsLineItem):
         """根據節點中心點更新線條的起點和終點"""
         start_pos = self.start_item.scenePos() + self.start_item.rect().center()
         
+        # --- 修正 #1：計算與目標方塊邊緣的交點作為終點 ---
         end_pos = self.get_intersection_point(self.end_item, start_pos)
 
         self.setLine(start_pos.x(), start_pos.y(), end_pos.x(), end_pos.y())
 
+    # --- 修正 #2：新增計算交點的輔助方法 ---
     def get_intersection_point(self, target_node, start_pos):
         """計算從 start_pos 到 target_node 中心的連線與其邊界的交點"""
         target_center = target_node.scenePos() + target_node.rect().center()
@@ -148,6 +152,7 @@ class ConnectionLine(QGraphicsLineItem):
         bottom_line = QLineF(target_rect.bottomRight(), target_rect.bottomLeft())
         left_line = QLineF(target_rect.bottomLeft(), target_rect.topLeft())
 
+        # --- 修正：使用 PyQt6 的 intersects 語法 ---
         # 依序檢查與四個邊的交點
         intersection_type, intersect_point = line.intersects(top_line)
         if intersection_type == QLineF.IntersectionType.BoundedIntersection:
@@ -215,6 +220,7 @@ class NodeRectItem(QGraphicsRectItem):
         super().__init__(*args, **kwargs)
         self.text_item = None # 用來存放對應的文字項目
         self.this_node_id = this_node_id
+        # --- 修正 #2：新增列表來追蹤連線 ---
         self.connections = []
 
     def add_connection(self, connection):
@@ -293,6 +299,7 @@ class NodeRectItem(QGraphicsRectItem):
     def itemChange(self, change, value):
         # 檢查位置是否已變更
         if change == QGraphicsRectItem.GraphicsItemChange.ItemPositionHasChanged and self.scene():
+            # --- 修正 #3：更新所有相連的線條 ---
             for conn in self.connections:
                 conn.update_positions()
 
@@ -891,6 +898,7 @@ class NervePoint(QMainWindow):
 
         if node_to_delete:
             # --- 套用與 keyPressEvent 相同的刪除邏輯 ---
+            # 建立一個要迭代的連線副本，因為會在迴圈中修改原始列表
             for conn in list(node_to_delete.connections):
                 # 找到這條線連接的另一個節點
                 other_node = conn.start_item if conn.end_item == node_to_delete else conn.end_item
@@ -955,10 +963,13 @@ class NervePoint(QMainWindow):
                     print(f"準備刪除節點 ID: {node_id_to_delete}")
                     
 
+                    # --- 修正：在刪除節點前，先處理與其相連的線條 ---
+                    # 建立一個要迭代的連線副本，因為我們會在迴圈中修改原始列表
                     for conn in list(node_to_delete.connections):
                         # 找到這條線連接的另一個節點
                         other_node = conn.start_item if conn.end_item == node_to_delete else conn.end_item
                         
+                        # 讓另一個節點忘記這條線
                         if other_node:
                             other_node.remove_connection(conn)
                         
@@ -1046,6 +1057,8 @@ class NervePoint(QMainWindow):
             if isinstance(end_item, NodeRectItem) and end_item is not self.start_node_item:
                 print(f"成功連接節點 {self.start_node_item.this_node_id} 到 {end_item.this_node_id}")
                 
+                # --- 修正 #4：處理覆蓋舊連線的邏輯 ---
+                # 檢查起始節點是否已經有一條作為"起點"的連線
                 connection_to_remove = None
                 for conn in self.start_node_item.connections:
                     # 如果這條線的起點是我們現在的起始節點，就表示要替換它
@@ -1063,6 +1076,7 @@ class NervePoint(QMainWindow):
                     self.start_node_item.remove_connection(connection_to_remove)
 
 
+                # --- 修正 #5：使用新的 ConnectionLine 類別 ---
                 connection_line = ConnectionLine(self.start_node_item, end_item)
                 connection_line.setPen(line_pen) # 正確的設定方式
                 connection_line.update_positions() # 初始對齊
