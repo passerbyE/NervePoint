@@ -1,7 +1,7 @@
 import sys
 import json
 import os
-from PyQt6.QtWidgets import QVBoxLayout, QWidget, QApplication,  QDockWidget, QTreeWidget, QMainWindow, QGraphicsView, QGraphicsScene, QGraphicsRectItem, QTreeWidgetItem, QGraphicsTextItem, QGraphicsLineItem
+from PyQt6.QtWidgets import QVBoxLayout, QWidget, QApplication,  QDockWidget, QTreeWidget, QMainWindow, QGraphicsView, QGraphicsScene, QGraphicsRectItem, QTreeWidgetItem, QGraphicsTextItem, QGraphicsLineItem, QFileDialog, QMessageBox
 # 匯入 QAction 以建立選單項目
 from PyQt6.QtGui import QColor, QBrush, QPen, QPainter, QAction, QTextCursor, QPolygonF
 from PyQt6.QtCore import Qt, QTimer, QPointF, QLineF
@@ -20,7 +20,8 @@ probabilities = [19, 1]
 # --- 組合路徑的程式碼 ... ---
 script_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(script_dir)
-json_path = os.path.join(project_root, '.data', 'node.json')
+# 預設 JSON 路徑（將在初始化時動態設定）
+json_path = None
 
 
 class ConnectionLine(QGraphicsLineItem):
@@ -296,6 +297,12 @@ class NodeRectItem(QGraphicsRectItem):
 class NervePoint(QMainWindow):
     def __init__(self):
         super().__init__()
+        # 當前專案路徑
+        self.current_project_path = None
+        
+        # 初始化專案（新增專案或使用預設）
+        self.init_default_project()
+        
         #讀取節點資料
         global node_data
         node_data = self.load_data()
@@ -356,6 +363,35 @@ class NervePoint(QMainWindow):
 
         # --- 建立選單列 ---
         menu_bar = self.menuBar()
+        
+        # 檔案選單
+        file_menu = menu_bar.addMenu("檔案(&F)")
+        
+        new_project_action = QAction("新增專案(&N)", self)
+        new_project_action.setShortcut("Ctrl+N")
+        new_project_action.triggered.connect(self.new_project)
+        file_menu.addAction(new_project_action)
+        
+        open_project_action = QAction("開啟專案(&O)", self)
+        open_project_action.setShortcut("Ctrl+O")
+        open_project_action.triggered.connect(self.open_project)
+        file_menu.addAction(open_project_action)
+        
+        file_menu.addSeparator()
+        
+        save_project_action = QAction("儲存專案(&S)", self)
+        save_project_action.setShortcut("Ctrl+S")
+        save_project_action.triggered.connect(self.save_data)
+        file_menu.addAction(save_project_action)
+        
+        file_menu.addSeparator()
+        
+        exit_action = QAction("離開(&X)", self)
+        exit_action.setShortcut("Alt+F4")
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
+        
+        # 檢視選單
         view_menu = menu_bar.addMenu("檢視(&V)")
         # 建立一個動作來顯示/重置側邊欄
         reset_dock_action = QAction("顯示 Do List", self)
@@ -752,6 +788,137 @@ class NervePoint(QMainWindow):
 
 
     # --- 視窗與資料方法 ---
+    def init_default_project(self):
+        """初始化預設專案路徑"""
+        global json_path
+        default_path = os.path.join(project_root, '.data', 'node.json')
+        json_path = default_path
+        self.current_project_path = default_path
+        print(f"使用預設專案路徑: {json_path}")
+    
+    def new_project(self):
+        """建立新專案"""
+        global json_path, node_data
+        
+        # 詢問使用者是否要儲存目前的專案
+        if node_data.get("nodeList") and len(node_data["nodeList"]) > 0:
+            reply = QMessageBox.question(
+                self, '儲存目前專案',
+                '是否要儲存目前的專案？',
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel
+            )
+            
+            if reply == QMessageBox.StandardButton.Cancel:
+                return
+            elif reply == QMessageBox.StandardButton.Yes:
+                self.save_data()
+        
+        # 選擇新專案儲存位置
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "建立新專案",
+            os.path.join(project_root, '.data'),
+            "JSON Files (*.json);;All Files (*)"
+        )
+        
+        if file_path:
+            # 確保副檔名為 .json
+            if not file_path.endswith('.json'):
+                file_path += '.json'
+            
+            # 更新全域路徑
+            json_path = file_path
+            self.current_project_path = file_path
+            
+            # 建立新的空白專案資料
+            node_data = {
+                "projectName": os.path.basename(file_path).replace('.json', ''),
+                "newest_id": 1,
+                "nodeList": []
+            }
+            
+            # 儲存新專案
+            self.save_data()
+            
+            # 清除場景
+            self.clear_scene()
+            
+            # 重置參數
+            self.newest_id = 1
+            
+            # 更新樹狀圖
+            self.updateTree()
+            
+            # 更新視窗標題
+            self.setWindowTitle(f"NervePoint - {node_data['projectName']}")
+            
+            self.show_notification(f"已建立新專案: {node_data['projectName']}")
+            print(f"新專案已建立: {file_path}")
+    
+    def open_project(self):
+        """開啟舊專案"""
+        global json_path, node_data
+        
+        # 詢問使用者是否要儲存目前的專案
+        if node_data.get("nodeList") and len(node_data["nodeList"]) > 0:
+            reply = QMessageBox.question(
+                self, '儲存目前專案',
+                '是否要儲存目前的專案？',
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel
+            )
+            
+            if reply == QMessageBox.StandardButton.Cancel:
+                return
+            elif reply == QMessageBox.StandardButton.Yes:
+                self.save_data()
+        
+        # 選擇要開啟的專案檔案
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "開啟專案",
+            os.path.join(project_root, '.data'),
+            "JSON Files (*.json);;All Files (*)"
+        )
+        
+        if file_path:
+            # 更新全域路徑
+            json_path = file_path
+            self.current_project_path = file_path
+            
+            # 載入專案資料
+            node_data = self.load_data()
+            
+            # 清除場景
+            self.clear_scene()
+            
+            # 重置參數
+            self.newest_id = node_data.get("newest_id", 1)
+            
+            # 載入節點和連線
+            self.load_nodes_from_data()
+            
+            # 更新樹狀圖
+            self.updateTree()
+            
+            # 更新視窗標題
+            project_name = node_data.get('projectName', os.path.basename(file_path).replace('.json', ''))
+            self.setWindowTitle(f"NervePoint - {project_name}")
+            
+            self.show_notification(f"已開啟專案: {project_name}")
+            print(f"專案已開啟: {file_path}")
+    
+    def clear_scene(self):
+        """清除場景中的所有節點和連線"""
+        # 清除所有圖形項目
+        self.scene.clear()
+        
+        # 清除追蹤變數
+        self.onitem = None
+        self.start_node_item = None
+        self.preview_line = None
+        
+        print("場景已清除")
+    
     def reset_todo_dock(self):
         print("執行復位側邊欄...")
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.todo_dock)

@@ -1,93 +1,27 @@
 {
-    "projectName": "test",
-    "newest_id": 15,
+    "projectName": "node",
+    "newest_id": 5,
     "nodeList": [
         {
-            "id": 0,
-            "Text": "系統設計",
+            "id": 1,
+            "Text": "testing",
             "FatherNodeid": -1,
             "coordinate": [
-                35.0,
-                -382.0,
+                93.0,
+                -334.0,
                 100.0,
                 50.0
             ]
         },
         {
-            "id": 1,
-            "Text": "移動系統設計",
-            "FatherNodeid": 0,
-            "coordinate": [
-                -35.0,
-                -307.0,
-                120.0,
-                50.0
-            ]
-        },
-        {
-            "id": 2,
-            "Text": "遊戲機制設計 (討論項)",
-            "FatherNodeid": 0,
-            "coordinate": [
-                120.0,
-                -307.0,
-                163.0,
-                50.0
-            ]
-        },
-        {
-            "id": 3,
-            "Text": "視覺表現",
+            "id": 4,
+            "Text": "seting",
             "FatherNodeid": 1,
             "coordinate": [
-                -32.0,
-                -224.0,
+                25.0,
+                -249.0,
                 100.0,
                 50.0
-            ]
-        },
-        {
-            "id": 5,
-            "Text": "萬向重力翻轉",
-            "FatherNodeid": 2,
-            "coordinate": [
-                235.0,
-                -202.0,
-                120.0,
-                50.0
-            ]
-        },
-        {
-            "id": 8,
-            "Text": "2D重力翻轉",
-            "FatherNodeid": 2,
-            "coordinate": [
-                105.0,
-                -202.0,
-                112.0,
-                50.0
-            ]
-        },
-        {
-            "id": 9,
-            "Text": "三軸鎖定翻轉",
-            "FatherNodeid": 2,
-            "coordinate": [
-                297.0,
-                -274.0,
-                120.0,
-                50.0
-            ]
-        },
-        {
-            "id": 10,
-            "Text": "Lerp 強調紙片人質感\n~鏡頭移動時帶動腳色緩慢轉動到正方向",
-            "FatherNodeid": 3,
-            "coordinate": [
-                -31.0,
-                -123.0,
-                264.0,
-                58.0
             ]
         }
     ]
